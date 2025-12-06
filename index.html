@@ -118,21 +118,37 @@
             text-align: center;
         }
 
-        #hall-of-fame table {
+        #hall-of-fame table,
+        #ultimate-hof table {
             width: 100%;
             border-collapse: collapse;
             font-size: 13px;
         }
 
         #hall-of-fame th,
-        #hall-of-fame td {
+        #hall-of-fame td,
+        #ultimate-hof th,
+        #ultimate-hof td {
             border-bottom: 1px solid #333;
             padding: 4px 3px;
             text-align: left;
         }
 
-        #hall-of-fame th {
+        #hall-of-fame th,
+        #ultimate-hof th {
             font-weight: 600;
+        }
+
+        #ultimate-hof-panel {
+            margin-top: 10px;
+            border-top: 1px solid #333;
+            padding-top: 8px;
+        }
+
+        #ultimate-hof-panel h3 {
+            margin: 6px 0;
+            font-size: 16px;
+            text-align: center;
         }
 
         #game-over-overlay {
@@ -273,6 +289,11 @@
     <div id="hof-panel">
         <h2>Hall of Fame</h2>
         <div id="hall-of-fame">Ładowanie...</div>
+
+        <div id="ultimate-hof-panel">
+            <h3>Ultimate Hall of Fame (globalne)</h3>
+            <div id="ultimate-hof">Ładowanie...</div>
+        </div>
     </div>
 </div>
 
@@ -297,6 +318,9 @@
     const scaleContainerEl = document.getElementById('game-scale');
     const gameWrapperEl = document.getElementById('game-wrapper');
 
+    const hofContainer = document.getElementById('hall-of-fame');
+    const ultimateHofContainer = document.getElementById('ultimate-hof');
+
     const GRAVITY = 0.5;
     const JUMP_SPEED = -11;
     const GROUND_HEIGHT = 80;
@@ -313,6 +337,9 @@
     const MAX_LEVEL = 5;               // poziomy 1..5
     const SPEED_LEVELS = [1, 1.2, 1.4, 1.6, 1.8];  // mnożniki prędkości
     const REWARD_LEVELS = [10, 20, 30, 40, 50];    // punkty za przeszkodę
+
+    // Minimalny wynik, aby trafić do Ultimate Hall of Fame
+    const MIN_ULTIMATE_SCORE = 500;
 
     const CAPY = {
         x: 80,
@@ -410,7 +437,6 @@
         const type = animalTypes[Math.floor(Math.random() * animalTypes.length)];
 
         // Bazowe rozmiary zbliżone do wcześniejszych „domowych” zwierząt
-        // (dostosowane do najniższej prędkości tak, żeby dało się przeskakiwać)
         let baseW = 60;
         let baseH = 40;
 
@@ -438,7 +464,6 @@
         }
 
         // Skalowanie rozmiaru zwierzęcia zależnie od poziomu prędkości:
-        // poziom 1 – bazowy rozmiar, kolejne poziomy stopniowo większe
         const lvlIndex = getCurrentLevelIndex(); // 0..4
         const sizeFactor = 1 + lvlIndex * 0.2;   // 1.0, 1.2, 1.4, 1.6, 1.8
 
@@ -494,15 +519,9 @@
 
         // Teren – ziemia (kreski) porusza się z prędkością gry
         groundOffset -= speed * dt;
-        if (groundOffset < -canvas.width) {
-            groundOffset += canvas.width;
-        }
 
         // Pagórki w tle – wolniej (parallax)
         hillOffset -= speed * 0.4 * dt;
-        if (hillOffset < -canvas.width) {
-            hillOffset += canvas.width;
-        }
 
         // Chmury – powoli, niezależnie od prędkości gry
         cloudOffset1 -= 0.3 * dt;
@@ -577,13 +596,17 @@
         const cloudBaseY3 = 50;
         const cloudSpacing = 220;
 
-        for (let x = (cloudOffset1 % cloudSpacing) - cloudSpacing; x < canvas.width + cloudSpacing; x += cloudSpacing) {
+        const c1 = ((cloudOffset1 % cloudSpacing) + cloudSpacing) % cloudSpacing;
+        const c2 = ((cloudOffset2 % cloudSpacing) + cloudSpacing) % cloudSpacing;
+        const c3 = ((cloudOffset3 % cloudSpacing) + cloudSpacing) % cloudSpacing;
+
+        for (let x = -c1; x < canvas.width + cloudSpacing; x += cloudSpacing) {
             drawCloud(x, cloudBaseY1);
         }
-        for (let x = (cloudOffset2 % cloudSpacing) - cloudSpacing; x < canvas.width + cloudSpacing; x += cloudSpacing) {
+        for (let x = -c2; x < canvas.width + cloudSpacing; x += cloudSpacing) {
             drawCloud(x, cloudBaseY2, 0.8);
         }
-        for (let x = (cloudOffset3 % cloudSpacing) - cloudSpacing; x < canvas.width + cloudSpacing; x += cloudSpacing) {
+        for (let x = -c3; x < canvas.width + cloudSpacing; x += cloudSpacing) {
             drawCloud(x, cloudBaseY3, 0.7);
         }
         ctx.restore();
@@ -599,14 +622,17 @@
         // Linie na ziemi (scrollujące razem z terenem)
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
         const stripeWidth = 40;
-        for (let x = (groundOffset % stripeWidth) - stripeWidth; x < canvas.width; x += stripeWidth) {
+        const stripeShift = ((groundOffset % stripeWidth) + stripeWidth) % stripeWidth;
+        for (let x = -stripeShift; x < canvas.width + stripeWidth; x += stripeWidth) {
             ctx.fillRect(x, groundY + 12, 20, 3);
         }
 
         // Pagórki w tle – wolniej (parallax)
         ctx.fillStyle = 'rgba(0, 100, 0, 0.5)';
         const hillY = groundY - 60;
-        for (let x = (hillOffset % 200) - 200; x < canvas.width + 200; x += 200) {
+        const hillSeg = 200;
+        const hillShift = ((hillOffset % hillSeg) + hillSeg) % hillSeg;
+        for (let x = -hillShift - hillSeg; x < canvas.width + hillSeg; x += hillSeg) {
             ctx.beginPath();
             ctx.moveTo(x, groundY);
             ctx.quadraticCurveTo(x + 100, hillY - 30, x + 200, groundY);
@@ -1073,8 +1099,12 @@
         const name = (playerNameInput.value || '').toUpperCase().substring(0, 5) || '???';
         if (window.hof && typeof window.hof.addScore === 'function') {
             window.hof.addScore(name, score);
-            window.hof.render(document.getElementById('hall-of-fame'));
+            window.hof.render(hofContainer);
         }
+
+        // Po zaktualizowaniu lokalnego Hall of Fame spróbuj zaktualizować Ultimate Hall of Fame
+        pushTopLocalToUltimateIfEligible();
+
         resetGame();
     }
 
@@ -1154,10 +1184,94 @@
         }
     }
 
-    // Inicjalizacja – Hall of Fame
-    if (window.hof && typeof window.hof.render === 'function') {
-        window.hof.render(document.getElementById('hall-of-fame'));
+    /* ---------------- Ultimate Hall of Fame (globalny) ---------------- */
+
+    // Renderowanie tabeli Ultimate HoF z danych [{name, score}, ...]
+    function renderUltimateHof(list) {
+        if (!list || !list.length) {
+            ultimateHofContainer.innerHTML = '<em>Brak wyników globalnych.</em>';
+            return;
+        }
+
+        let html = '<table><thead><tr><th>#</th><th>Gracz</th><th>Wynik</th></tr></thead><tbody>';
+        list.forEach((entry, index) => {
+            const name = (entry.name || '???').toString().substring(0, 5);
+            const score = Number(entry.score) || 0;
+            html += `<tr><td>${index + 1}</td><td>${name}</td><td>${score}</td></tr>`;
+        });
+        html += '</tbody></table>';
+        ultimateHofContainer.innerHTML = html;
     }
+
+    // Pobieranie Ultimate HoF z serwera
+    function loadUltimateHallOfFame() {
+        // Zakładamy prosty endpoint na serwerze, który zwraca JSON:
+        // [{ "name": "AAA", "score": 1234 }, ...]
+        fetch('ultimate_hof.php?action=get', { cache: 'no-store' })
+            .then(resp => resp.ok ? resp.json() : [])
+            .then(data => {
+                renderUltimateHof(Array.isArray(data) ? data : []);
+            })
+            .catch(() => {
+                ultimateHofContainer.innerHTML = '<em>Nie udało się pobrać Ultimate Hall of Fame.</em>';
+            });
+    }
+
+    // Odczyt najwyższego wyniku z lokalnego Hall of Fame (parsując tabelę)
+    function getTopLocalScoreFromDom() {
+        const table = hofContainer.querySelector('table');
+        if (!table) return null;
+
+        const firstRow = table.querySelector('tbody tr');
+        if (!firstRow) return null;
+
+        const cells = firstRow.querySelectorAll('td');
+        if (cells.length < 3) return null;
+
+        // Zakładamy strukturę: # | nazwa | wynik
+        const name = cells[1].textContent.trim().substring(0, 5);
+        const score = parseInt(cells[2].textContent.trim(), 10) || 0;
+
+        return { name, score };
+    }
+
+    // Wysyłanie top lokalnego wyniku do Ultimate HoF, jeśli spełnia warunek
+    function pushTopLocalToUltimateIfEligible() {
+        const top = getTopLocalScoreFromDom();
+        if (!top) return;
+        if (top.score < MIN_ULTIMATE_SCORE) return;
+
+        // Prosty POST JSON do serwera, który zapisuje do pliku / bazy
+        // i zwraca zaktualizowaną listę Ultimate HoF.
+        fetch('ultimate_hof.php?action=add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(top)
+        })
+        .then(resp => resp.ok ? resp.json() : [])
+        .then(data => {
+            // Serwer może zwrócić nową listę globalną
+            if (Array.isArray(data) && data.length) {
+                renderUltimateHof(data);
+            } else {
+                // jeśli nie, po prostu dociągamy
+                loadUltimateHallOfFame();
+            }
+        })
+        .catch(() => {
+            // w razie błędu po prostu nic nie robimy – gra działa dalej
+        });
+    }
+
+    // Inicjalizacja – Hall of Fame lokalny
+    if (window.hof && typeof window.hof.render === 'function') {
+        window.hof.render(hofContainer);
+    }
+
+    // Inicjalizacja – Ultimate Hall of Fame globalny
+    loadUltimateHallOfFame();
 
     // Start – statyczny ekran
     resetGame();
