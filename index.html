@@ -2,7 +2,8 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Kapibara Runner</title>
     <style>
         body {
@@ -16,6 +17,37 @@
             min-height: 100vh;
         }
 
+        /* Informacja o konieczności obrócenia telefonu (portret) */
+        #rotate-overlay {
+            position: fixed;
+            inset: 0;
+            background: #111;
+            color: #fff;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 9999;
+        }
+
+        #rotate-overlay-inner {
+            max-width: 320px;
+            margin: 0 auto;
+        }
+
+        #rotate-overlay h1 {
+            font-size: 22px;
+            margin-bottom: 10px;
+        }
+
+        #rotate-overlay p {
+            font-size: 16px;
+            line-height: 1.4;
+        }
+
+        /* Główny kontener gry */
         .container {
             margin: 10px auto;
             display: flex;
@@ -27,11 +59,35 @@
             box-sizing: border-box;
         }
 
-        /* Na większych ekranach – gra + hall of fame obok siebie */
-        @media (min-width: 800px) {
+        /* Na większych/niskich, szerokich ekranach – gra + hall of fame obok siebie */
+        @media (min-width: 800px) and (orientation: landscape) {
             .container {
                 flex-direction: row;
                 align-items: flex-start;
+            }
+        }
+
+        /* Na bardzo niskich ekranach zmniejszamy trochę UI, żeby się zmieścił */
+        @media (max-height: 480px) {
+            #ui {
+                font-size: 12px;
+            }
+            #message {
+                font-size: 12px;
+            }
+            button {
+                font-size: 12px;
+                padding: 4px;
+            }
+        }
+
+        /* W trybie pionowym ukrywamy grę, pokazujemy overlay "obróć telefon" */
+        @media (orientation: portrait) {
+            .container {
+                display: none;
+            }
+            #rotate-overlay {
+                display: flex;
             }
         }
 
@@ -48,8 +104,8 @@
             display: block;
             background: linear-gradient(#7fd4ff, #b5e8ff);
             border-radius: 8px;
-            width: 100%;
-            height: auto; /* skalowanie do szerokości ekranu */
+            width: 100%;     /* skalowanie do szerokości ekranu */
+            height: auto;    /* proporcje z atrybutów width/height */
         }
 
         #ui {
@@ -172,10 +228,22 @@
     </style>
 </head>
 <body>
+
+<!-- Overlay zachęcający do trybu poziomego na telefonie -->
+<div id="rotate-overlay">
+    <div id="rotate-overlay-inner">
+        <h1>Obróć telefon</h1>
+        <p>
+            Ta gra została zaprojektowana do gry w poziomie (landscape).<br />
+            Obróć proszę urządzenie, aby kontynuować.
+        </p>
+    </div>
+</div>
+
 <div class="container">
     <div id="game-wrapper">
         <div style="position: relative;">
-            <!-- fizyczny rozmiar canvasa (logika) – 800x400, wizualnie skalujemy CSS-em -->
+            <!-- Logiczny rozmiar gry: 800x400, wizualnie skalowany CSS-em -->
             <canvas id="game" width="800" height="400"></canvas>
             <div id="game-over-overlay">
                 <div id="game-over-box">
@@ -197,11 +265,11 @@
         <div id="ui">
             <div>Punkty: <span id="score">0</span></div>
             <div>Czas: <span id="time">0.0</span>s</div>
-            <div>Prędkość: <span id="speed-indicator">normalna</span></div>
+            <div>Poziom prędkości: <span id="speed-indicator">1</span>/5</div>
         </div>
         <div id="message">
-            Sterowanie: <strong>Spacja</strong> lub <strong>dotknięcie / kliknięcie</strong><br />
-            Kapibara biegnie sama – przeskakuj przeszkody!
+            Sterowanie: <strong>Spacja</strong> lub <strong>dotknięcie / kliknięcie w obszar gry</strong><br />
+            Kapibara biegnie sama – przeskakuj zwierzęta!
         </div>
     </div>
 
@@ -232,9 +300,17 @@
     const GROUND_HEIGHT = 80;
 
     const BASE_SPEED = 4;
-    const SPEED_MULTIPLIER_AFTER_30 = 1.2;
-    const BASE_REWARD = 10;
-    const BONUS_REWARD_AFTER_30 = 10; // razem 20 po 30 s
+
+    // 5 poziomów – co 30 sekund:
+    // 0-30s: poziom 1, 10 pkt
+    // 30-60: poziom 2, 20 pkt
+    // 60-90: poziom 3, 30 pkt
+    // 90-120: poziom 4, 40 pkt
+    // 120+: poziom 5, 50 pkt
+    const LEVEL_DURATION = 30;          // w sekundach
+    const MAX_LEVEL = 5;               // poziomy 1..5
+    const SPEED_LEVELS = [1, 1.2, 1.4, 1.6, 1.8];  // mnożniki prędkości
+    const REWARD_LEVELS = [10, 20, 30, 40, 50];    // punkty za przeszkodę
 
     const CAPY = {
         x: 80,
@@ -260,6 +336,22 @@
 
     let gameOverActionHandled = false;
 
+    function getCurrentLevelIndex() {
+        if (!startTime) return 0;
+        const levelFromTime = Math.floor(elapsedTime / LEVEL_DURATION);
+        return Math.min(levelFromTime, MAX_LEVEL - 1); // indeks 0..4
+    }
+
+    function getCurrentSpeed() {
+        const lvlIndex = getCurrentLevelIndex();
+        return BASE_SPEED * SPEED_LEVELS[lvlIndex];
+    }
+
+    function getCurrentReward() {
+        const lvlIndex = getCurrentLevelIndex();
+        return REWARD_LEVELS[lvlIndex];
+    }
+
     function resetGame() {
         CAPY.y = canvas.height - GROUND_HEIGHT - CAPY.h;
         CAPY.vy = 0;
@@ -277,7 +369,7 @@
 
         scoreEl.textContent = '0';
         timeEl.textContent = '0.0';
-        speedIndicatorEl.textContent = 'normalna';
+        speedIndicatorEl.textContent = '1';
 
         gameOverOverlay.style.display = 'none';
         playerNameInput.value = '';
@@ -287,24 +379,33 @@
         drawFrame(0); // statyczny kadr startowy
     }
 
-    function getCurrentSpeed() {
-        const speedUp = elapsedTime >= 30;
-        return BASE_SPEED * (speedUp ? SPEED_MULTIPLIER_AFTER_30 : 1);
-    }
-
-    function getCurrentReward() {
-        const speedUp = elapsedTime >= 30;
-        return BASE_REWARD + (speedUp ? BONUS_REWARD_AFTER_30 : 0);
-    }
-
     function spawnObstacle(currentTime) {
         const now = currentTime;
         if (now - lastObstacleTime < obstacleInterval) return;
 
         lastObstacleTime = now;
 
-        const width = 30 + Math.random() * 30;
-        const height = 30 + Math.random() * 40;
+        // Wybór losowego zwierzęcia
+        const animalTypes = ['pies', 'kot', 'żółw', 'ptak', 'świnia'];
+        const type = animalTypes[Math.floor(Math.random() * animalTypes.length)];
+
+        // Różne rozmiary w zależności od typu
+        let width = 40;
+        let height = 40;
+
+        switch (type) {
+            case 'pies':
+                width = 60; height = 40; break;
+            case 'kot':
+                width = 50; height = 35; break;
+            case 'żółw':
+                width = 45; height = 25; break;
+            case 'ptak':
+                width = 40; height = 30; break;
+            case 'świnia':
+                width = 55; height = 38; break;
+        }
+
         const x = canvas.width + 20;
         const y = canvas.height - GROUND_HEIGHT - height;
 
@@ -313,7 +414,8 @@
             y,
             w: width,
             h: height,
-            scored: false
+            scored: false,
+            type
         });
     }
 
@@ -348,7 +450,8 @@
         elapsedTime = (timestamp - startTime) / 1000;
 
         const speed = getCurrentSpeed();
-        speedIndicatorEl.textContent = elapsedTime >= 30 ? 'szybsza' : 'normalna';
+        const lvlIndex = getCurrentLevelIndex();
+        speedIndicatorEl.textContent = (lvlIndex + 1).toString();
 
         // Tło
         bgOffset -= speed * bgSpeedFactor * dt;
@@ -380,7 +483,7 @@
                 return;
             }
 
-            // Punkty za minięcie przeszkody
+            // Punkty za minięcie "zwierzątka"
             if (!o.scored && (o.x + o.w) < CAPY.x) {
                 o.scored = true;
                 score += getCurrentReward();
@@ -456,10 +559,146 @@
         ctx.fillRect(CAPY.x + CAPY.w - 12, CAPY.y + CAPY.h, 6, 8 - legOffset);
     }
 
+    // Rysowanie różnych zwierząt (prostymi kształtami)
+    function drawAnimal(o) {
+        const { x, y, w, h, type } = o;
+
+        switch (type) {
+            case 'pies':
+                drawDog(x, y, w, h);
+                break;
+            case 'kot':
+                drawCat(x, y, w, h);
+                break;
+            case 'żółw':
+                drawTurtle(x, y, w, h);
+                break;
+            case 'ptak':
+                drawBird(x, y, w, h);
+                break;
+            case 'świnia':
+                drawPig(x, y, w, h);
+                break;
+            default:
+                // awaryjnie prostokąt
+                ctx.fillStyle = '#4b2e16';
+                ctx.fillRect(x, y, w, h);
+        }
+    }
+
+    function drawDog(x, y, w, h) {
+        ctx.fillStyle = '#5c3c1f';
+        // tułów
+        ctx.fillRect(x, y + h * 0.3, w * 0.7, h * 0.6);
+        // głowa
+        ctx.fillRect(x + w * 0.7, y + h * 0.2, w * 0.35, h * 0.5);
+        // uszy
+        ctx.fillRect(x + w * 0.78, y + h * 0.05, w * 0.08, h * 0.18);
+        // nogi
+        ctx.fillRect(x + w * 0.1, y + h * 0.8, w * 0.1, h * 0.2);
+        ctx.fillRect(x + w * 0.5, y + h * 0.8, w * 0.1, h * 0.2);
+    }
+
+    function drawCat(x, y, w, h) {
+        ctx.fillStyle = '#444';
+        // tułów
+        ctx.fillRect(x, y + h * 0.35, w * 0.7, h * 0.55);
+        // głowa
+        ctx.fillRect(x + w * 0.55, y + h * 0.15, w * 0.4, h * 0.4);
+        // uszy
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.6, y + h * 0.15);
+        ctx.lineTo(x + w * 0.65, y);
+        ctx.lineTo(x + w * 0.7, y + h * 0.15);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.8, y + h * 0.15);
+        ctx.lineTo(x + w * 0.85, y);
+        ctx.lineTo(x + w * 0.9, y + h * 0.15);
+        ctx.closePath();
+        ctx.fill();
+        // nogi
+        ctx.fillRect(x + w * 0.1, y + h * 0.8, w * 0.1, h * 0.2);
+        ctx.fillRect(x + w * 0.5, y + h * 0.8, w * 0.1, h * 0.2);
+        // ogon
+        ctx.fillRect(x - w * 0.15, y + h * 0.4, w * 0.15, h * 0.12);
+    }
+
+    function drawTurtle(x, y, w, h) {
+        ctx.fillStyle = '#2f7d32';
+        // skorupa – półelipsa
+        ctx.beginPath();
+        ctx.ellipse(x + w * 0.5, y + h * 0.7, w * 0.5, h * 0.4, 0, Math.PI, 0);
+        ctx.closePath();
+        ctx.fill();
+        // głowa
+        ctx.fillRect(x + w * 0.8, y + h * 0.6, w * 0.2, h * 0.2);
+        // nogi
+        ctx.fillRect(x + w * 0.2, y + h * 0.8, w * 0.15, h * 0.15);
+        ctx.fillRect(x + w * 0.6, y + h * 0.8, w * 0.15, h * 0.15);
+    }
+
+    function drawBird(x, y, w, h) {
+        ctx.fillStyle = '#e0c04f';
+        // ciało – elipsa
+        ctx.beginPath();
+        ctx.ellipse(x + w * 0.4, y + h * 0.6, w * 0.4, h * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // głowa
+        ctx.beginPath();
+        ctx.arc(x + w * 0.75, y + h * 0.45, h * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        // dziób
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.9, y + h * 0.45);
+        ctx.lineTo(x + w, y + h * 0.42);
+        ctx.lineTo(x + w, y + h * 0.48);
+        ctx.closePath();
+        ctx.fill();
+        // nogi
+        ctx.fillRect(x + w * 0.35, y + h * 0.8, w * 0.05, h * 0.2);
+        ctx.fillRect(x + w * 0.5, y + h * 0.8, w * 0.05, h * 0.2);
+    }
+
+    function drawPig(x, y, w, h) {
+        ctx.fillStyle = '#d78ca2';
+        // tułów
+        ctx.fillRect(x, y + h * 0.35, w * 0.7, h * 0.55);
+        // głowa
+        ctx.fillRect(x + w * 0.6, y + h * 0.25, w * 0.4, h * 0.4);
+        // uszy
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.65, y + h * 0.25);
+        ctx.lineTo(x + w * 0.7, y + h * 0.1);
+        ctx.lineTo(x + w * 0.75, y + h * 0.25);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.8, y + h * 0.25);
+        ctx.lineTo(x + w * 0.85, y + h * 0.1);
+        ctx.lineTo(x + w * 0.9, y + h * 0.25);
+        ctx.closePath();
+        ctx.fill();
+
+        // nogi
+        ctx.fillRect(x + w * 0.1, y + h * 0.8, w * 0.1, h * 0.2);
+        ctx.fillRect(x + w * 0.4, y + h * 0.8, w * 0.1, h * 0.2);
+        // ogonek
+        ctx.beginPath();
+        ctx.moveTo(x - w * 0.05, y + h * 0.5);
+        ctx.lineTo(x - w * 0.1, y + h * 0.45);
+        ctx.lineTo(x - w * 0.15, y + h * 0.5);
+        ctx.strokeStyle = '#d78ca2';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
     function drawObstacles() {
-        ctx.fillStyle = '#4b2e16';
         obstacles.forEach(o => {
-            ctx.fillRect(o.x, o.y, o.w, o.h);
+            drawAnimal(o);
         });
     }
 
@@ -504,7 +743,7 @@
     });
 
     // Sterowanie – dotyk / kliknięcie dla gry
-    function handleTap(e) {
+    function handleTap() {
         if (gameState === 'gameover') return;
         doJump();
     }
@@ -512,7 +751,8 @@
     // Kliknięcia myszą – nie reagujemy, gdy klik w okno game over
     window.addEventListener('mousedown', (e) => {
         if (e.target.closest('#game-over-box')) return;
-        handleTap(e);
+        if (!e.target.closest('#game-wrapper')) return;
+        handleTap();
     });
 
     // Dotyk – tylko obszar gry, nie okno game over
@@ -532,7 +772,7 @@
         if (gameState === 'gameover') return;
 
         e.preventDefault();
-        handleTap(e);
+        handleTap();
     }, { passive: false });
 
     function handleSaveScore() {
