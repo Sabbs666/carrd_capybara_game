@@ -327,10 +327,11 @@
     let lastObstacleTime = 0;
     let obstacleInterval = 1400; // ms
 
-    let bgOffset = 0;
-    let bgSpeedFactor = 0.5;
+    // Parallax: osobne offsety dla ziemi i pagórków
+    let groundOffset = 0;      // ziemia + kreski
+    let hillOffset = 0;        // pagórki w tle
 
-    // Osobne offsety chmur – słońce jest nieruchome
+    // Chmury – osobne offsety (niezależne od prędkości gry)
     let cloudOffset1 = 0;
     let cloudOffset2 = 0;
     let cloudOffset3 = 0;
@@ -370,8 +371,9 @@
 
         obstacles = [];
         lastObstacleTime = 0;
-        bgOffset = 0;
 
+        groundOffset = 0;
+        hillOffset = 0;
         cloudOffset1 = 0;
         cloudOffset2 = 0;
         cloudOffset3 = 0;
@@ -490,13 +492,19 @@
         const lvlIndex = getCurrentLevelIndex();
         speedIndicatorEl.textContent = (lvlIndex + 1).toString();
 
-        // Tło – grunt i wzgórza przewijają się z prędkością gry
-        bgOffset -= speed * bgSpeedFactor * dt;
-        if (bgOffset < -canvas.width) {
-            bgOffset += canvas.width;
+        // Teren – ziemia (kreski) porusza się z prędkością gry
+        groundOffset -= speed * dt;
+        if (groundOffset < -canvas.width) {
+            groundOffset += canvas.width;
         }
 
-        // Chmury – osobne, wolniejsze przesuwanie, niezależne od prędkości gry
+        // Pagórki w tle – wolniej (parallax)
+        hillOffset -= speed * 0.4 * dt;
+        if (hillOffset < -canvas.width) {
+            hillOffset += canvas.width;
+        }
+
+        // Chmury – powoli, niezależnie od prędkości gry
         cloudOffset1 -= 0.3 * dt;
         cloudOffset2 -= 0.2 * dt;
         cloudOffset3 -= 0.1 * dt;
@@ -550,7 +558,7 @@
         );
     }
 
-    function drawBackground() {
+    function drawBackground(time) {
         const groundY = canvas.height - GROUND_HEIGHT;
 
         // Słońce – nieruchome
@@ -588,17 +596,17 @@
         ctx.fillStyle = '#3ea63e';
         ctx.fillRect(0, groundY, canvas.width, 8);
 
-        // Linie na ziemi (scrollujące)
+        // Linie na ziemi (scrollujące razem z terenem)
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
         const stripeWidth = 40;
-        for (let x = (bgOffset % stripeWidth) - stripeWidth; x < canvas.width; x += stripeWidth) {
+        for (let x = (groundOffset % stripeWidth) - stripeWidth; x < canvas.width; x += stripeWidth) {
             ctx.fillRect(x, groundY + 12, 20, 3);
         }
 
-        // Proste wzgórza w tle
+        // Pagórki w tle – wolniej (parallax)
         ctx.fillStyle = 'rgba(0, 100, 0, 0.5)';
         const hillY = groundY - 60;
-        for (let x = ((bgOffset * 0.5) % 200) - 200; x < canvas.width + 200; x += 200) {
+        for (let x = (hillOffset % 200) - 200; x < canvas.width + 200; x += 200) {
             ctx.beginPath();
             ctx.moveTo(x, groundY);
             ctx.quadraticCurveTo(x + 100, hillY - 30, x + 200, groundY);
@@ -618,12 +626,12 @@
         ctx.fill();
     }
 
-    function drawCapybara() {
+    function drawCapybara(time) {
         // Ciało
         ctx.fillStyle = '#b97a57';
         ctx.fillRect(CAPY.x, CAPY.y, CAPY.w, CAPY.h);
 
-        // Głowa (po prawej, biegnie w prawo, przeszkody w lewo)
+        // Głowa (po prawej)
         ctx.fillRect(CAPY.x + CAPY.w - 10, CAPY.y + 5, 18, 16);
 
         // Oko
@@ -632,47 +640,47 @@
         ctx.arc(CAPY.x + CAPY.w + 4, CAPY.y + 10, 2, 0, Math.PI * 2);
         ctx.fill();
 
-        // Nóżki – prosty efekt biegu
-        const legPhase = Math.sin(performance.now() / 80);
+        // Nóżki – animacja biegu
+        const legPhase = Math.sin(time / 80);
         const legOffset = legPhase * 2;
         ctx.fillRect(CAPY.x + 5, CAPY.y + CAPY.h, 6, 8 + legOffset);
         ctx.fillRect(CAPY.x + CAPY.w - 12, CAPY.y + CAPY.h, 6, 8 - legOffset);
     }
 
     // Rysowanie egzotycznych zwierząt, zwróconych w LEWĄ stronę (głowa po lewej)
-    function drawAnimal(o) {
+    function drawAnimal(o, time) {
         const { x, y, w, h, type } = o;
 
         switch (type) {
             case 'słoń':
-                drawElephant(x, y, w, h);
+                drawElephant(x, y, w, h, time);
                 break;
             case 'małpa':
-                drawMonkey(x, y, w, h);
+                drawMonkey(x, y, w, h, time);
                 break;
             case 'krokodyl':
-                drawCrocodile(x, y, w, h);
+                drawCrocodile(x, y, w, h, time);
                 break;
             case 'pantera':
-                drawPanther(x, y, w, h);
+                drawPanther(x, y, w, h, time);
                 break;
             case 'papuga':
-                drawParrot(x, y, w, h);
+                drawParrot(x, y, w, h, time);
                 break;
             case 'wąż':
-                drawSnake(x, y, w, h);
+                drawSnake(x, y, w, h, time);
                 break;
             case 'nosorożec':
-                drawRhino(x, y, w, h);
+                drawRhino(x, y, w, h, time);
                 break;
             case 'zebra':
-                drawZebra(x, y, w, h);
+                drawZebra(x, y, w, h, time);
                 break;
             case 'lew':
-                drawLion(x, y, w, h);
+                drawLion(x, y, w, h, time);
                 break;
             case 'guziec':
-                drawWarthog(x, y, w, h);
+                drawWarthog(x, y, w, h, time);
                 break;
             default:
                 ctx.fillStyle = '#4b2e16';
@@ -680,7 +688,7 @@
         }
     }
 
-    function drawElephant(x, y, w, h) {
+    function drawElephant(x, y, w, h, time) {
         ctx.fillStyle = '#9ea7b8';
         // tułów
         ctx.fillRect(x + w * 0.3, y + h * 0.3, w * 0.6, h * 0.6);
@@ -688,14 +696,19 @@
         ctx.fillRect(x, y + h * 0.25, w * 0.35, h * 0.5);
         // trąba w lewo
         ctx.fillRect(x - w * 0.15, y + h * 0.45, w * 0.15, h * 0.15);
-        // nogi
-        ctx.fillRect(x + w * 0.35, y + h * 0.8, w * 0.12, h * 0.2);
-        ctx.fillRect(x + w * 0.6, y + h * 0.8, w * 0.12, h * 0.2);
+
+        // nogi – animacja
+        const phase = Math.sin(time / 120);
+        const legDelta = phase * (h * 0.08);
+
+        ctx.fillRect(x + w * 0.35, y + h * 0.8, w * 0.12, h * 0.2 + legDelta);
+        ctx.fillRect(x + w * 0.6, y + h * 0.8, w * 0.12, h * 0.2 - legDelta);
+
         // ucho
         ctx.fillRect(x + w * 0.1, y + h * 0.3, w * 0.15, h * 0.25);
     }
 
-    function drawMonkey(x, y, w, h) {
+    function drawMonkey(x, y, w, h, time) {
         ctx.fillStyle = '#8b5a2b';
         // tułów
         ctx.fillRect(x + w * 0.35, y + h * 0.35, w * 0.45, h * 0.5);
@@ -708,6 +721,14 @@
         ctx.beginPath();
         ctx.ellipse(x + w * 0.25, y + h * 0.5, w * 0.18, h * 0.15, 0, 0, Math.PI * 2);
         ctx.fill();
+
+        // nogi – animacja
+        ctx.fillStyle = '#8b5a2b';
+        const phase = Math.sin(time / 120);
+        const legDelta = phase * (h * 0.08);
+        ctx.fillRect(x + w * 0.4, y + h * 0.8, w * 0.08, h * 0.2 + legDelta);
+        ctx.fillRect(x + w * 0.6, y + h * 0.8, w * 0.08, h * 0.2 - legDelta);
+
         // ogon (z prawej)
         ctx.strokeStyle = '#8b5a2b';
         ctx.lineWidth = 3;
@@ -715,13 +736,9 @@
         ctx.moveTo(x + w * 0.8, y + h * 0.4);
         ctx.quadraticCurveTo(x + w * 0.95, y + h * 0.2, x + w * 0.9, y + h * 0.05);
         ctx.stroke();
-        // nogi
-        ctx.fillStyle = '#8b5a2b';
-        ctx.fillRect(x + w * 0.4, y + h * 0.8, w * 0.08, h * 0.2);
-        ctx.fillRect(x + w * 0.6, y + h * 0.8, w * 0.08, h * 0.2);
     }
 
-    function drawCrocodile(x, y, w, h) {
+    function drawCrocodile(x, y, w, h, time) {
         ctx.fillStyle = '#2e7d32';
         // ciało
         ctx.fillRect(x + w * 0.2, y + h * 0.4, w * 0.7, h * 0.4);
@@ -739,9 +756,15 @@
             ctx.closePath();
             ctx.fill();
         }
+        // nogi – mała animacja
+        ctx.fillStyle = '#2e7d32';
+        const phase = Math.sin(time / 140);
+        const legDelta = phase * (h * 0.05);
+        ctx.fillRect(x + w * 0.25, y + h * 0.8, w * 0.1, h * 0.15 + legDelta);
+        ctx.fillRect(x + w * 0.6, y + h * 0.8, w * 0.1, h * 0.15 - legDelta);
     }
 
-    function drawPanther(x, y, w, h) {
+    function drawPanther(x, y, w, h, time) {
         ctx.fillStyle = '#111';
         // tułów
         ctx.fillRect(x + w * 0.3, y + h * 0.35, w * 0.6, h * 0.4);
@@ -760,9 +783,11 @@
         ctx.lineTo(x + w * 0.31, y + h * 0.3);
         ctx.closePath();
         ctx.fill();
-        // nogi
-        ctx.fillRect(x + w * 0.35, y + h * 0.75, w * 0.1, h * 0.25);
-        ctx.fillRect(x + w * 0.6, y + h * 0.75, w * 0.1, h * 0.25);
+        // nogi – animacja
+        const phase = Math.sin(time / 110);
+        const legDelta = phase * (h * 0.07);
+        ctx.fillRect(x + w * 0.35, y + h * 0.75, w * 0.1, h * 0.25 + legDelta);
+        ctx.fillRect(x + w * 0.6, y + h * 0.75, w * 0.1, h * 0.25 - legDelta);
         // ogon w górę
         ctx.beginPath();
         ctx.moveTo(x + w * 0.9, y + h * 0.45);
@@ -772,43 +797,70 @@
         ctx.stroke();
     }
 
-    function drawParrot(x, y, w, h) {
-        ctx.fillStyle = '#e53935';
+    function drawParrot(x, y, w, h, time) {
+        // Papuga – inny wygląd i animacja lotu (falowanie w pionie + machanie skrzydłami)
+        const flapPhase = Math.sin(time / 120);
+        const floatPhase = Math.sin(time / 350);
+        const dy = floatPhase * (h * 0.1); // lekki ruch góra-dół
+
+        const bodyCx = x + w * 0.4;
+        const bodyCy = y + h * 0.55 + dy;
+
         // ciało (owal)
+        ctx.fillStyle = '#43a047';
         ctx.beginPath();
-        ctx.ellipse(x + w * 0.4, y + h * 0.55, w * 0.35, h * 0.3, 0, 0, Math.PI * 2);
+        ctx.ellipse(bodyCx, bodyCy, w * 0.3, h * 0.25, 0, 0, Math.PI * 2);
         ctx.fill();
+
         // głowa
+        ctx.fillStyle = '#e53935';
         ctx.beginPath();
-        ctx.arc(x + w * 0.2, y + h * 0.4, h * 0.2, 0, Math.PI * 2);
+        ctx.arc(x + w * 0.2, y + h * 0.4 + dy, h * 0.2, 0, Math.PI * 2);
         ctx.fill();
+
         // dziób w lewo
         ctx.fillStyle = '#ffca28';
         ctx.beginPath();
-        ctx.moveTo(x + w * 0.05, y + h * 0.4);
-        ctx.lineTo(x, y + h * 0.37);
-        ctx.lineTo(x, y + h * 0.43);
+        ctx.moveTo(x + w * 0.05, y + h * 0.4 + dy);
+        ctx.lineTo(x, y + h * 0.37 + dy);
+        ctx.lineTo(x, y + h * 0.43 + dy);
         ctx.closePath();
         ctx.fill();
-        // skrzydło
-        ctx.fillStyle = '#c62828';
+
+        // skrzydła – machanie (przez zmianę położenia):
+        const wingOffset = flapPhase * (h * 0.15);
+        ctx.fillStyle = '#1e88e5';
         ctx.beginPath();
-        ctx.ellipse(x + w * 0.45, y + h * 0.6, w * 0.25, h * 0.22, 0, 0, Math.PI * 2);
+        ctx.ellipse(bodyCx + w * 0.05, bodyCy + wingOffset, w * 0.25, h * 0.2, 0, 0, Math.PI * 2);
         ctx.fill();
-        // ogon
-        ctx.fillRect(x + w * 0.65, y + h * 0.7, w * 0.1, h * 0.4);
+
+        // ogon (pióra)
+        ctx.fillStyle = '#8e24aa';
+        ctx.beginPath();
+        ctx.moveTo(bodyCx + w * 0.25, bodyCy + h * 0.1);
+        ctx.lineTo(bodyCx + w * 0.38, bodyCy + h * 0.35);
+        ctx.lineTo(bodyCx + w * 0.18, bodyCy + h * 0.3);
+        ctx.closePath();
+        ctx.fill();
+
+        // małe nogi pod ciałem (widoczne tylko lekko)
+        ctx.fillStyle = '#5d4037';
+        ctx.fillRect(bodyCx - w * 0.03, bodyCy + h * 0.25, w * 0.03, h * 0.12);
+        ctx.fillRect(bodyCx + w * 0.02, bodyCy + h * 0.25, w * 0.03, h * 0.12);
     }
 
-    function drawSnake(x, y, w, h) {
+    function drawSnake(x, y, w, h, time) {
         ctx.fillStyle = '#4caf50';
-        // ciało - falujący pasek od prawej do lewej
-        const segments = 6;
+        // ciało - falujący pasek od prawej do lewej z animacją pełzania
+        const segments = 8;
         const segmentWidth = w / segments;
+        const phaseBase = time / 160;
+
         ctx.beginPath();
         ctx.moveTo(x + w, y + h * 0.6);
         for (let i = 0; i <= segments; i++) {
             const px = x + w - i * segmentWidth;
-            const offset = (i % 2 === 0) ? -h * 0.15 : h * 0.15;
+            const offset = Math.sin(phaseBase + i * 0.8) * h * 0.2;
             ctx.lineTo(px, y + h * 0.6 + offset);
         }
         ctx.lineWidth = h * 0.3;
@@ -820,7 +872,7 @@
         ctx.fillRect(x, y + h * 0.45, w * 0.15, h * 0.3);
     }
 
-    function drawRhino(x, y, w, h) {
+    function drawRhino(x, y, w, h, time) {
         ctx.fillStyle = '#757575';
         // tułów
         ctx.fillRect(x + w * 0.35, y + h * 0.35, w * 0.55, h * 0.5);
@@ -834,13 +886,15 @@
         ctx.lineTo(x - w * 0.05, y + h * 0.4);
         ctx.closePath();
         ctx.fill();
-        // nogi
+        // nogi – animacja
         ctx.fillStyle = '#757575';
-        ctx.fillRect(x + w * 0.4, y + h * 0.8, w * 0.12, h * 0.2);
-        ctx.fillRect(x + w * 0.65, y + h * 0.8, w * 0.12, h * 0.2);
+        const phase = Math.sin(time / 130);
+        const legDelta = phase * (h * 0.06);
+        ctx.fillRect(x + w * 0.4, y + h * 0.8, w * 0.12, h * 0.2 + legDelta);
+        ctx.fillRect(x + w * 0.65, y + h * 0.8, w * 0.12, h * 0.2 - legDelta);
     }
 
-    function drawZebra(x, y, w, h) {
+    function drawZebra(x, y, w, h, time) {
         ctx.fillStyle = '#fafafa';
         // tułów
         ctx.fillRect(x + w * 0.3, y + h * 0.35, w * 0.6, h * 0.45);
@@ -868,14 +922,16 @@
         ctx.lineTo(x + w * 0.29, y + h * 0.3);
         ctx.closePath();
         ctx.fill();
-        // nogi
-        ctx.fillRect(x + w * 0.35, y + h * 0.8, w * 0.1, h * 0.2);
-        ctx.fillRect(x + w * 0.6, y + h * 0.8, w * 0.1, h * 0.2);
+        // nogi – animacja
+        const phase = Math.sin(time / 120);
+        const legDelta = phase * (h * 0.07);
+        ctx.fillRect(x + w * 0.35, y + h * 0.8, w * 0.1, h * 0.2 + legDelta);
+        ctx.fillRect(x + w * 0.6, y + h * 0.8, w * 0.1, h * 0.2 - legDelta);
         // ogon
         ctx.fillRect(x + w * 0.88, y + h * 0.45, w * 0.05, h * 0.3);
     }
 
-    function drawLion(x, y, w, h) {
+    function drawLion(x, y, w, h, time) {
         ctx.fillStyle = '#f9a825';
         // tułów
         ctx.fillRect(x + w * 0.35, y + h * 0.4, w * 0.55, h * 0.4);
@@ -888,10 +944,12 @@
         ctx.beginPath();
         ctx.arc(x + w * 0.25, y + h * 0.5, h * 0.3, 0, Math.PI * 2);
         ctx.fill();
-        // nogi
+        // nogi – animacja
         ctx.fillStyle = '#f9a825';
-        ctx.fillRect(x + w * 0.4, y + h * 0.8, w * 0.1, h * 0.2);
-        ctx.fillRect(x + w * 0.65, y + h * 0.8, w * 0.1, h * 0.2);
+        const phase = Math.sin(time / 115);
+        const legDelta = phase * (h * 0.07);
+        ctx.fillRect(x + w * 0.4, y + h * 0.8, w * 0.1, h * 0.2 + legDelta);
+        ctx.fillRect(x + w * 0.65, y + h * 0.8, w * 0.1, h * 0.2 - legDelta);
         // ogon
         ctx.beginPath();
         ctx.moveTo(x + w * 0.9, y + h * 0.45);
@@ -901,7 +959,7 @@
         ctx.stroke();
     }
 
-    function drawWarthog(x, y, w, h) {
+    function drawWarthog(x, y, w, h, time) {
         ctx.fillStyle = '#8d6e63';
         // tułów
         ctx.fillRect(x + w * 0.35, y + h * 0.4, w * 0.55, h * 0.4);
@@ -921,26 +979,28 @@
         ctx.lineTo(x + w * 0.05, y + h * 0.5);
         ctx.closePath();
         ctx.fill();
-        // nogi
+        // nogi – animacja
         ctx.fillStyle = '#8d6e63';
-        ctx.fillRect(x + w * 0.4, y + h * 0.8, w * 0.1, h * 0.2);
-        ctx.fillRect(x + w * 0.65, y + h * 0.8, w * 0.1, h * 0.2);
+        const phase = Math.sin(time / 125);
+        const legDelta = phase * (h * 0.06);
+        ctx.fillRect(x + w * 0.4, y + h * 0.8, w * 0.1, h * 0.2 + legDelta);
+        ctx.fillRect(x + w * 0.65, y + h * 0.8, w * 0.1, h * 0.2 - legDelta);
         // grzywa na grzbiecie
         ctx.fillStyle = '#5d4037';
         ctx.fillRect(x + w * 0.45, y + h * 0.32, w * 0.2, h * 0.08);
     }
 
-    function drawObstacles() {
+    function drawObstacles(time) {
         obstacles.forEach(o => {
-            drawAnimal(o);
+            drawAnimal(o, time);
         });
     }
 
-    function drawFrame(timestamp) {
+    function drawFrame(time) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawBackground();
-        drawObstacles();
-        drawCapybara();
+        drawBackground(time);
+        drawObstacles(time);
+        drawCapybara(time);
     }
 
     function gameLoop(timestamp) {
