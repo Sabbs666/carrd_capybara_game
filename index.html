@@ -17,7 +17,7 @@
             min-height: 100vh;
         }
 
-        /* Informacja o konieczności obrócenia telefonu (portret) */
+        /* Overlay proszący o obrócenie telefonu */
         #rotate-overlay {
             position: fixed;
             inset: 0;
@@ -47,7 +47,7 @@
             line-height: 1.4;
         }
 
-        /* Główny kontener gry */
+        /* Główny kontener (gra + Hall of Fame) */
         .container {
             margin: 10px auto;
             display: flex;
@@ -57,38 +57,20 @@
             max-width: 1000px;
             padding: 0 10px 10px;
             box-sizing: border-box;
+            align-items: center;
         }
 
-        /* Na większych/niskich, szerokich ekranach – gra + hall of fame obok siebie */
-        @media (min-width: 800px) and (orientation: landscape) {
+        /* Przy większych szerokościach można lekko rozszerzyć */
+        @media (min-width: 900px) {
             .container {
-                flex-direction: row;
                 align-items: flex-start;
             }
         }
 
-        /* Na bardzo niskich ekranach zmniejszamy trochę UI, żeby się zmieścił */
-        @media (max-height: 480px) {
-            #ui {
-                font-size: 12px;
-            }
-            #message {
-                font-size: 12px;
-            }
-            button {
-                font-size: 12px;
-                padding: 4px;
-            }
-        }
-
-        /* W trybie pionowym ukrywamy grę, pokazujemy overlay "obróć telefon" */
-        @media (orientation: portrait) {
-            .container {
-                display: none;
-            }
-            #rotate-overlay {
-                display: flex;
-            }
+        /* Kontener, w którym skalujemy cały interfejs gry */
+        #game-scale {
+            position: relative;
+            /* szerokość i wysokość będą ustawiane w JS */
         }
 
         #game-wrapper {
@@ -96,16 +78,16 @@
             padding: 10px;
             border-radius: 8px;
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
-            flex: 2;
-            min-width: 0;
+            width: 800px;       /* bazowa szerokość, do której dopasowujemy skalowanie */
+            box-sizing: border-box;
         }
 
         canvas {
             display: block;
             background: linear-gradient(#7fd4ff, #b5e8ff);
             border-radius: 8px;
-            width: 100%;     /* skalowanie do szerokości ekranu */
-            height: auto;    /* proporcje z atrybutów width/height */
+            width: 100%;   /* dopasowanie do szerokości game-wrappera */
+            height: auto;  /* zachowanie proporcji 800x400 */
         }
 
         #ui {
@@ -128,7 +110,8 @@
             border-radius: 8px;
             min-width: 0;
             box-shadow: 0 0 20px rgba(0,0,0,0.5);
-            flex: 1;
+            width: 100%;
+            max-width: 400px;
         }
 
         #hof-panel h2 {
@@ -225,11 +208,25 @@
             transform: translateY(1px);
             box-shadow: 0 0 0 rgba(0,0,0,0);
         }
+
+        /* Drobne zmiany dla bardzo niskich ekranów (np. mały landscape) */
+        @media (max-height: 480px) {
+            #ui {
+                font-size: 12px;
+            }
+            #message {
+                font-size: 12px;
+            }
+            button {
+                font-size: 12px;
+                padding: 4px;
+            }
+        }
     </style>
 </head>
 <body>
 
-<!-- Overlay zachęcający do trybu poziomego na telefonie -->
+<!-- Overlay proszący o tryb poziomy na małych urządzeniach -->
 <div id="rotate-overlay">
     <div id="rotate-overlay-inner">
         <h1>Obróć telefon</h1>
@@ -240,36 +237,38 @@
     </div>
 </div>
 
-<div class="container">
-    <div id="game-wrapper">
-        <div style="position: relative;">
-            <!-- Logiczny rozmiar gry: 800x400, wizualnie skalowany CSS-em -->
-            <canvas id="game" width="800" height="400"></canvas>
-            <div id="game-over-overlay">
-                <div id="game-over-box">
-                    <h3>Koniec gry</h3>
-                    <div class="row">
-                        <strong>Twój wynik:</strong> <span id="final-score">0</span>
-                    </div>
-                    <div class="row">
-                        <label for="player-name">Twoje imię (max 5 znaków):</label>
-                        <input id="player-name" type="text" maxlength="5" />
-                    </div>
-                    <div class="buttons">
-                        <button id="save-score-btn">Zapisz wynik</button>
-                        <button id="restart-btn" class="secondary">Graj ponownie</button>
+<div class="container" id="main-container">
+    <div id="game-scale">
+        <div id="game-wrapper">
+            <div style="position: relative;">
+                <!-- Logiczny rozmiar gry: 800x400 -->
+                <canvas id="game" width="800" height="400"></canvas>
+                <div id="game-over-overlay">
+                    <div id="game-over-box">
+                        <h3>Koniec gry</h3>
+                        <div class="row">
+                            <strong>Twój wynik:</strong> <span id="final-score">0</span>
+                        </div>
+                        <div class="row">
+                            <label for="player-name">Twoje imię (max 5 znaków):</label>
+                            <input id="player-name" type="text" maxlength="5" />
+                        </div>
+                        <div class="buttons">
+                            <button id="save-score-btn">Zapisz wynik</button>
+                            <button id="restart-btn" class="secondary">Graj ponownie</button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <div id="ui">
-            <div>Punkty: <span id="score">0</span></div>
-            <div>Czas: <span id="time">0.0</span>s</div>
-            <div>Poziom prędkości: <span id="speed-indicator">1</span>/5</div>
-        </div>
-        <div id="message">
-            Sterowanie: <strong>Spacja</strong> lub <strong>dotknięcie / kliknięcie w obszar gry</strong><br />
-            Kapibara biegnie sama – przeskakuj zwierzęta!
+            <div id="ui">
+                <div>Punkty: <span id="score">0</span></div>
+                <div>Czas: <span id="time">0.0</span>s</div>
+                <div>Poziom prędkości: <span id="speed-indicator">1</span>/5</div>
+            </div>
+            <div id="message">
+                Sterowanie: <strong>Spacja</strong> lub <strong>dotknięcie / kliknięcie w obszar gry</strong><br />
+                Kapibara biegnie sama – przeskakuj zwierzęta!
+            </div>
         </div>
     </div>
 
@@ -294,6 +293,11 @@
     const playerNameInput = document.getElementById('player-name');
     const saveScoreBtn = document.getElementById('save-score-btn');
     const restartBtn = document.getElementById('restart-btn');
+
+    const overlayEl = document.getElementById('rotate-overlay');
+    const mainContainerEl = document.getElementById('main-container');
+    const scaleContainerEl = document.getElementById('game-scale');
+    const gameWrapperEl = document.getElementById('game-wrapper');
 
     const GRAVITY = 0.5;
     const JUMP_SPEED = -11;
@@ -335,6 +339,10 @@
     let score = 0;
 
     let gameOverActionHandled = false;
+
+    // Do skalowania interfejsu gry
+    let baseGameWidth = null;
+    let baseGameHeight = null;
 
     function getCurrentLevelIndex() {
         if (!startTime) return 0;
@@ -483,7 +491,7 @@
                 return;
             }
 
-            // Punkty za minięcie "zwierzątka"
+            // Punkty za minięcie zwierzątka
             if (!o.scored && (o.x + o.w) < CAPY.x) {
                 o.scored = true;
                 score += getCurrentReward();
@@ -580,7 +588,6 @@
                 drawPig(x, y, w, h);
                 break;
             default:
-                // awaryjnie prostokąt
                 ctx.fillStyle = '#4b2e16';
                 ctx.fillRect(x, y, w, h);
         }
@@ -748,7 +755,7 @@
         doJump();
     }
 
-    // Kliknięcia myszą – nie reagujemy, gdy klik w okno game over
+    // Kliknięcia myszą – tylko w obszarze gry, nie w okienku game over
     window.addEventListener('mousedown', (e) => {
         if (e.target.closest('#game-over-box')) return;
         if (!e.target.closest('#game-wrapper')) return;
@@ -815,15 +822,67 @@
         handleRestart();
     }, { passive: false });
 
-    // Inicjalizacja – Hall of Fame
-    document.addEventListener('DOMContentLoaded', () => {
-        if (window.hof && typeof window.hof.render === 'function') {
-            window.hof.render(document.getElementById('hall-of-fame'));
+    // Skalowanie interfejsu gry, aby mieścił się w oknie
+    function resizeGameArea() {
+        if (!gameWrapperEl || !scaleContainerEl) return;
+
+        // Zerujemy skalę, żeby poprawnie zmierzyć bazowe wymiary
+        gameWrapperEl.style.transform = 'scale(1)';
+        gameWrapperEl.style.transformOrigin = 'top left';
+
+        if (baseGameWidth === null || baseGameHeight === null) {
+            baseGameWidth = gameWrapperEl.offsetWidth;
+            baseGameHeight = gameWrapperEl.offsetHeight;
         }
-    });
+
+        if (!baseGameWidth || !baseGameHeight) return;
+
+        const padding = 10;
+        const availWidth = window.innerWidth - padding * 2;
+        const availHeight = window.innerHeight - padding * 2;
+
+        const scale = Math.min(
+            availWidth / baseGameWidth,
+            availHeight / baseGameHeight,
+            1
+        );
+
+        gameWrapperEl.style.transform = 'scale(' + scale + ')';
+        gameWrapperEl.style.transformOrigin = 'top left';
+
+        scaleContainerEl.style.width = (baseGameWidth * scale) + 'px';
+        scaleContainerEl.style.height = (baseGameHeight * scale) + 'px';
+    }
+
+    // Pokazywanie/ukrywanie overlayu "obróć telefon" + skalowanie
+    function updateLayout() {
+        if (!mainContainerEl || !overlayEl) return;
+
+        const isPortrait = window.innerHeight > window.innerWidth;
+        const isSmallDevice = window.innerWidth < 900;
+
+        if (isPortrait && isSmallDevice) {
+            overlayEl.style.display = 'flex';
+            mainContainerEl.style.display = 'none';
+        } else {
+            overlayEl.style.display = 'none';
+            mainContainerEl.style.display = 'flex';
+            resizeGameArea();
+        }
+    }
+
+    // Inicjalizacja – Hall of Fame
+    if (window.hof && typeof window.hof.render === 'function') {
+        window.hof.render(document.getElementById('hall-of-fame'));
+    }
 
     // Start – statyczny ekran
     resetGame();
+
+    // Ustawienie layoutu i skalowanie na starcie oraz przy zmianie rozmiaru / orientacji
+    updateLayout();
+    window.addEventListener('resize', updateLayout);
+
 })();
 </script>
 </body>
