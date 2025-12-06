@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8" />
+    <title>Kapibara Runner</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #222;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        .container {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+        }
+
+        #game-wrapper {
+            background: #111;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            display: block;
+            background: linear-gradient(#7fd4ff, #b5e8ff);
+            border-radius: 8px;
+        }
+
+        #ui {
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+
+        #message {
+            margin-top: 8px;
+            font-size: 14px;
+        }
+
+        #hof-panel {
+            background: #111;
+            padding: 10px 14px;
+            border-radius: 8px;
+            min-width: 260px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        #hof-panel h2 {
+            margin-top: 0;
+            font-size: 18px;
+            text-align: center;
+        }
+
+        #hall-of-fame table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        #hall-of-fame th,
+        #hall-of-fame td {
+            border-bottom: 1px solid #333;
+            padding: 4px 3px;
+            text-align: left;
+        }
+
+        #hall-of-fame th {
+            font-weight: 600;
+        }
+
+        #game-over-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #game-over-box {
+            background: #222;
+            border-radius: 10px;
+            padding: 16px 20px;
+            width: 280px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.7);
+        }
+
+        #game-over-box h3 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        .row {
+            margin-bottom: 8px;
+        }
+
+        label {
+            font-size: 13px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 5px 6px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #111;
+            color: #fff;
+            box-sizing: border-box;
+        }
+
+        .buttons {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+        }
+
+        button {
+            flex: 1;
+            padding: 6px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            background: #00c56b;
+            color: #000;
+            font-weight: 600;
+            transition: transform 0.05s ease, box-shadow 0.05s ease;
+        }
+
+        button.secondary {
+            background: #444;
+            color: #fff;
+        }
+
+        button:active {
+            transform: translateY(1px);
+            box-shadow: 0 0 0 rgba(0,0,0,0);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div id="game-wrapper">
+        <div style="position: relative;">
+            <canvas id="game" width="800" height="400"></canvas>
+            <div id="game-over-overlay">
+                <div id="game-over-box">
+                    <h3>Koniec gry</h3>
+                    <div class="row">
+                        <strong>Twój wynik:</strong> <span id="final-score">0</span>
+                    </div>
+                    <div class="row">
+                        <label for="player-name">Twoje imię (max 5 znaków):</label>
+                        <input id="player-name" type="text" maxlength="5" />
+                    </div>
+                    <div class="buttons">
+                        <button id="save-score-btn">Zapisz wynik</button>
+                        <button id="restart-btn" class="secondary">Graj ponownie</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="ui">
+            <div>Punkty: <span id="score">0</span></div>
+            <div>Czas: <span id="time">0.0</span>s</div>
+            <div>Prędkość: <span id="speed-indicator">normalna</span></div>
+        </div>
+        <div id="message">
+            Sterowanie: <strong>Spacja</strong> lub <strong>dotknięcie / kliknięcie</strong><br />
+            Kapibara biegnie sama – przeskakuj przeszkody!
+        </div>
+    </div>
+
+    <div id="hof-panel">
+        <h2>Hall of Fame</h2>
+        <div id="hall-of-fame">Ładowanie...</div>
+    </div>
+</div>
+
+<script src="hall_of_fame.js"></script>
+<script>
+(function(){
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const scoreEl = document.getElementById('score');
+    const timeEl = document.getElementById('time');
+    const speedIndicatorEl = document.getElementById('speed-indicator');
+
+    const gameOverOverlay = document.getElementById('game-over-overlay');
+    const finalScoreEl = document.getElementById('final-score');
+    const playerNameInput = document.getElementById('player-name');
+    const saveScoreBtn = document.getElementById('save-score-btn');
+    const restartBtn = document.getElementById('restart-btn');
+
+    const GRAVITY = 0.5;
+    const JUMP_SPEED = -11;
+    const GROUND_HEIGHT = 80;
+
+    const BASE_SPEED = 4;
+    const SPEED_MULTIPLIER_AFTER_30 = 1.2;
+    const BASE_REWARD = 10;
+    const BONUS_REWARD_AFTER_30 = 10; // razem 20 po 30 s
+
+    const CAPY = {
+        x: 80,
+        y: 0, // ustawi się niżej
+        w: 40,
+        h: 30,
+        vy: 0,
+        onGround: false
+    };
+
+    let obstacles = [];
+    let lastObstacleTime = 0;
+    let obstacleInterval = 1400; // ms
+
+    let bgOffset = 0;
+    let bgSpeedFactor = 0.5;
+
+    let gameState = 'ready'; // 'ready' | 'running' | 'gameover'
+    let startTime = null;
+    let lastFrameTime = null;
+    let elapsedTime = 0;
+    let score = 0;
+
+    function resetGame() {
+        CAPY.y = canvas.height - GROUND_HEIGHT - CAPY.h;
+        CAPY.vy = 0;
+        CAPY.onGround = true;
+
+        obstacles = [];
+        lastObstacleTime = 0;
+        bgOffset = 0;
+
+        startTime = null;
+        lastFrameTime = null;
+        elapsedTime = 0;
+        score = 0;
+        gameState = 'ready';
+
+        scoreEl.textContent = '0';
+        timeEl.textContent = '0.0';
+        speedIndicatorEl.textContent = 'normalna';
+
+        gameOverOverlay.style.display = 'none';
+        playerNameInput.value = '';
+
+        drawFrame(0); // statyczny kadr startowy
+    }
+
+    function getCurrentSpeed() {
+        const speedUp = elapsedTime >= 30;
+        return BASE_SPEED * (speedUp ? SPEED_MULTIPLIER_AFTER_30 : 1);
+    }
+
+    function getCurrentReward() {
+        const speedUp = elapsedTime >= 30;
+        return BASE_REWARD + (speedUp ? BONUS_REWARD_AFTER_30 : 0);
+    }
+
+    function spawnObstacle(currentTime) {
+        const now = currentTime;
+        if (now - lastObstacleTime < obstacleInterval) return;
+
+        lastObstacleTime = now;
+
+        const width = 30 + Math.random() * 30;
+        const height = 30 + Math.random() * 40;
+        const x = canvas.width + 20;
+        const y = canvas.height - GROUND_HEIGHT - height;
+
+        obstacles.push({
+            x,
+            y,
+            w: width,
+            h: height,
+            scored: false
+        });
+    }
+
+    function doJump() {
+        if (gameState === 'ready') {
+            startGame();
+        }
+        if (gameState !== 'running') return;
+
+        if (CAPY.onGround) {
+            CAPY.vy = JUMP_SPEED;
+            CAPY.onGround = false;
+        }
+    }
+
+    function startGame() {
+        if (gameState === 'running') return;
+        gameState = 'running';
+        startTime = performance.now();
+        lastFrameTime = startTime;
+        requestAnimationFrame(gameLoop);
+    }
+
+    function endGame() {
+        gameState = 'gameover';
+        finalScoreEl.textContent = score;
+        gameOverOverlay.style.display = 'flex';
+    }
+
+    function update(delta, timestamp) {
+        const dt = delta / 16.67; // ~60 FPS baseline
+        elapsedTime = (timestamp - startTime) / 1000;
+
+        const speed = getCurrentSpeed();
+        speedIndicatorEl.textContent = elapsedTime >= 30 ? 'szybsza' : 'normalna';
+
+        // Tło
+        bgOffset -= speed * bgSpeedFactor * dt;
+        if (bgOffset < -canvas.width) {
+            bgOffset += canvas.width;
+        }
+
+        // Kapibara – fizyka skoku
+        CAPY.vy += GRAVITY * dt;
+        CAPY.y += CAPY.vy * dt;
+
+        const groundY = canvas.height - GROUND_HEIGHT - CAPY.h;
+        if (CAPY.y >= groundY) {
+            CAPY.y = groundY;
+            CAPY.vy = 0;
+            CAPY.onGround = true;
+        }
+
+        // Przeszkody
+        spawnObstacle(timestamp);
+
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            const o = obstacles[i];
+            o.x -= speed * dt;
+
+            // Kolizja (prosta AABB)
+            if (rectOverlap(CAPY, o)) {
+                endGame();
+                return;
+            }
+
+            // Punkt za minięcie przeszkody (jak minie kapibarę)
+            if (!o.scored && (o.x + o.w) < CAPY.x) {
+                o.scored = true;
+                score += getCurrentReward();
+                scoreEl.textContent = score;
+            }
+
+            // Usuwanie poza ekranem
+            if (o.x + o.w < -50) {
+                obstacles.splice(i, 1);
+            }
+        }
+
+        timeEl.textContent = elapsedTime.toFixed(1);
+    }
+
+    function rectOverlap(a, b) {
+        return (
+            a.x < b.x + b.w &&
+            a.x + a.w > b.x &&
+            a.y < b.y + b.h &&
+            a.y + a.h > b.y
+        );
+    }
+
+    function drawBackground() {
+        const groundY = canvas.height - GROUND_HEIGHT;
+
+        // Ziemia
+        ctx.fillStyle = '#5b3b1f';
+        ctx.fillRect(0, groundY, canvas.width, GROUND_HEIGHT);
+
+        // Trawa
+        ctx.fillStyle = '#3ea63e';
+        ctx.fillRect(0, groundY, canvas.width, 8);
+
+        // Linie na ziemi (scrollujące)
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        const stripeWidth = 40;
+        for (let x = (bgOffset % stripeWidth) - stripeWidth; x < canvas.width; x += stripeWidth) {
+            ctx.fillRect(x, groundY + 12, 20, 3);
+        }
+
+        // Proste wzgórza w tle
+        ctx.fillStyle = 'rgba(0, 100, 0, 0.5)';
+        const hillY = groundY - 60;
+        for (let x = ((bgOffset * 0.5) % 200) - 200; x < canvas.width + 200; x += 200) {
+            ctx.beginPath();
+            ctx.moveTo(x, groundY);
+            ctx.quadraticCurveTo(x + 100, hillY - 30, x + 200, groundY);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+
+    function drawCapybara() {
+        // Ciało
+        ctx.fillStyle = '#b97a57';
+        ctx.fillRect(CAPY.x, CAPY.y, CAPY.w, CAPY.h);
+
+        // Głowa
+        ctx.fillRect(CAPY.x + CAPY.w - 10, CAPY.y + 5, 18, 16);
+
+        // Oko
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(CAPY.x + CAPY.w + 4, CAPY.y + 10, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Nóżki (migające przy bieganiu – zależne od czasu)
+        const legPhase = Math.sin(performance.now() / 80);
+        const legOffset = legPhase * 2;
+        ctx.fillRect(CAPY.x + 5, CAPY.y + CAPY.h, 6, 8 + legOffset);
+        ctx.fillRect(CAPY.x + CAPY.w - 12, CAPY.y + CAPY.h, 6, 8 - legOffset);
+    }
+
+    function drawObstacles() {
+        ctx.fillStyle = '#4b2e16';
+        obstacles.forEach(o => {
+            ctx.fillRect(o.x, o.y, o.w, o.h);
+        });
+    }
+
+    function drawFrame(timestamp) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBackground();
+        drawObstacles();
+        drawCapybara();
+    }
+
+    function gameLoop(timestamp) {
+        if (gameState !== 'running') {
+            drawFrame(timestamp);
+            return;
+        }
+
+        if (!lastFrameTime) lastFrameTime = timestamp;
+        const delta = timestamp - lastFrameTime;
+        lastFrameTime = timestamp;
+
+        update(delta, timestamp);
+        drawFrame(timestamp);
+
+        if (gameState === 'running') {
+            requestAnimationFrame(gameLoop);
+        }
+    }
+
+    // Sterowanie – klawiatura + dotyk / kliknięcie
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+            e.preventDefault();
+            if (gameState === 'gameover') return; // w game over skok wyłączony
+            doJump();
+        }
+    });
+
+    // dotyk / kliknięcie – cała strona
+    function handleTap(e) {
+        if (gameState === 'gameover') return;
+        doJump();
+    }
+
+    window.addEventListener('mousedown', handleTap);
+    window.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        handleTap(e);
+    }, { passive: false });
+
+    // Game over – obsługa przycisków
+    saveScoreBtn.addEventListener('click', () => {
+        const name = (playerNameInput.value || '').toUpperCase().substring(0, 5) || '???';
+        if (window.hof && typeof window.hof.addScore === 'function') {
+            window.hof.addScore(name, score);
+            window.hof.render(document.getElementById('hall-of-fame'));
+        }
+        resetGame();
+    });
+
+    restartBtn.addEventListener('click', () => {
+        resetGame();
+    });
+
+    // Inicjalizacja – Hall of Fame
+    document.addEventListener('DOMContentLoaded', () => {
+        if (window.hof && typeof window.hof.render === 'function') {
+            window.hof.render(document.getElementById('hall-of-fame'));
+        }
+    });
+
+    // Start – statyczny ekran
+    resetGame();
+})();
+</script>
+</body>
+</html>
