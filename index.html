@@ -330,6 +330,11 @@
     let bgOffset = 0;
     let bgSpeedFactor = 0.5;
 
+    // Osobne offsety chmur – słońce jest nieruchome
+    let cloudOffset1 = 0;
+    let cloudOffset2 = 0;
+    let cloudOffset3 = 0;
+
     let gameState = 'ready'; // 'ready' | 'running' | 'gameover'
     let startTime = null;
     let lastFrameTime = null;
@@ -367,6 +372,10 @@
         lastObstacleTime = 0;
         bgOffset = 0;
 
+        cloudOffset1 = 0;
+        cloudOffset2 = 0;
+        cloudOffset3 = 0;
+
         startTime = null;
         lastFrameTime = null;
         elapsedTime = 0;
@@ -398,32 +407,41 @@
         ];
         const type = animalTypes[Math.floor(Math.random() * animalTypes.length)];
 
-        // Różne rozmiary w zależności od typu
-        let width = 50;
-        let height = 40;
+        // Bazowe rozmiary zbliżone do wcześniejszych „domowych” zwierząt
+        // (dostosowane do najniższej prędkości tak, żeby dało się przeskakiwać)
+        let baseW = 60;
+        let baseH = 40;
 
         switch (type) {
             case 'słoń':
-                width = 90; height = 60; break;
+                baseW = 60; baseH = 40; break;
             case 'małpa':
-                width = 50; height = 45; break;
+                baseW = 50; baseH = 40; break;
             case 'krokodyl':
-                width = 90; height = 30; break;
+                baseW = 60; baseH = 30; break;
             case 'pantera':
-                width = 75; height = 35; break;
+                baseW = 60; baseH = 35; break;
             case 'papuga':
-                width = 50; height = 40; break;
+                baseW = 40; baseH = 30; break;
             case 'wąż':
-                width = 80; height = 25; break;
+                baseW = 60; baseH = 25; break;
             case 'nosorożec':
-                width = 80; height = 50; break;
+                baseW = 60; baseH = 45; break;
             case 'zebra':
-                width = 80; height = 50; break;
+                baseW = 60; baseH = 45; break;
             case 'lew':
-                width = 75; height = 45; break;
+                baseW = 60; baseH = 40; break;
             case 'guziec':
-                width = 70; height = 40; break;
+                baseW = 55; baseH = 38; break;
         }
+
+        // Skalowanie rozmiaru zwierzęcia zależnie od poziomu prędkości:
+        // poziom 1 – bazowy rozmiar, kolejne poziomy stopniowo większe
+        const lvlIndex = getCurrentLevelIndex(); // 0..4
+        const sizeFactor = 1 + lvlIndex * 0.2;   // 1.0, 1.2, 1.4, 1.6, 1.8
+
+        const width = baseW * sizeFactor;
+        const height = baseH * sizeFactor;
 
         const x = canvas.width + 20;
         const y = canvas.height - GROUND_HEIGHT - height;
@@ -472,11 +490,16 @@
         const lvlIndex = getCurrentLevelIndex();
         speedIndicatorEl.textContent = (lvlIndex + 1).toString();
 
-        // Tło
+        // Tło – grunt i wzgórza przewijają się z prędkością gry
         bgOffset -= speed * bgSpeedFactor * dt;
         if (bgOffset < -canvas.width) {
             bgOffset += canvas.width;
         }
+
+        // Chmury – osobne, wolniejsze przesuwanie, niezależne od prędkości gry
+        cloudOffset1 -= 0.3 * dt;
+        cloudOffset2 -= 0.2 * dt;
+        cloudOffset3 -= 0.1 * dt;
 
         // Kapibara – fizyka skoku
         CAPY.vy += GRAVITY * dt;
@@ -530,9 +553,7 @@
     function drawBackground() {
         const groundY = canvas.height - GROUND_HEIGHT;
 
-        // Niebo jest w CSS tła canvasa, ale dodajemy słońce + chmury
-
-        // Słońce (górny prawy róg)
+        // Słońce – nieruchome
         ctx.save();
         ctx.fillStyle = '#FFD54F';
         ctx.beginPath();
@@ -540,7 +561,7 @@
         ctx.fill();
         ctx.restore();
 
-        // Chmury (delikatnie scrollujące)
+        // Chmury – poruszają się powoli w poziomie
         ctx.save();
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         const cloudBaseY1 = 70;
@@ -548,13 +569,13 @@
         const cloudBaseY3 = 50;
         const cloudSpacing = 220;
 
-        for (let x = (bgOffset * 0.25 % cloudSpacing) - cloudSpacing; x < canvas.width + cloudSpacing; x += cloudSpacing) {
+        for (let x = (cloudOffset1 % cloudSpacing) - cloudSpacing; x < canvas.width + cloudSpacing; x += cloudSpacing) {
             drawCloud(x, cloudBaseY1);
         }
-        for (let x = ((bgOffset * 0.3 + 100) % cloudSpacing) - cloudSpacing; x < canvas.width + cloudSpacing; x += cloudSpacing) {
+        for (let x = (cloudOffset2 % cloudSpacing) - cloudSpacing; x < canvas.width + cloudSpacing; x += cloudSpacing) {
             drawCloud(x, cloudBaseY2, 0.8);
         }
-        for (let x = ((bgOffset * 0.2 + 50) % cloudSpacing) - cloudSpacing; x < canvas.width + cloudSpacing; x += cloudSpacing) {
+        for (let x = (cloudOffset3 % cloudSpacing) - cloudSpacing; x < canvas.width + cloudSpacing; x += cloudSpacing) {
             drawCloud(x, cloudBaseY3, 0.7);
         }
         ctx.restore();
