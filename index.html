@@ -70,7 +70,7 @@
         #hall-of-fame td {
             border-bottom: 1px solid #333;
             padding: 4px 3px;
-            text-align: left;
+            textAlign: left;
         }
 
         #hall-of-fame th {
@@ -235,6 +235,8 @@
     let elapsedTime = 0;
     let score = 0;
 
+    let gameOverActionHandled = false;
+
     function resetGame() {
         CAPY.y = canvas.height - GROUND_HEIGHT - CAPY.h;
         CAPY.vy = 0;
@@ -256,6 +258,8 @@
 
         gameOverOverlay.style.display = 'none';
         playerNameInput.value = '';
+
+        gameOverActionHandled = false;
 
         drawFrame(0); // statyczny kadr startowy
     }
@@ -353,7 +357,7 @@
                 return;
             }
 
-            // Punkt za minięcie przeszkody (jak minie kapibarę)
+            // Punkty za minięcie przeszkody
             if (!o.scored && (o.x + o.w) < CAPY.x) {
                 o.scored = true;
                 score += getCurrentReward();
@@ -422,7 +426,7 @@
         ctx.arc(CAPY.x + CAPY.w + 4, CAPY.y + 10, 2, 0, Math.PI * 2);
         ctx.fill();
 
-        // Nóżki (migające przy bieganiu – zależne od czasu)
+        // Nóżki – prosty efekt biegu
         const legPhase = Math.sin(performance.now() / 80);
         const legOffset = legPhase * 2;
         ctx.fillRect(CAPY.x + 5, CAPY.y + CAPY.h, 6, 8 + legOffset);
@@ -461,40 +465,92 @@
         }
     }
 
-    // Sterowanie – klawiatura + dotyk / kliknięcie
+    // Sterowanie – klawiatura (spacja)
     window.addEventListener('keydown', (e) => {
-        if (e.code === 'Space') {
-            e.preventDefault();
-            if (gameState === 'gameover') return; // w game over skok wyłączony
-            doJump();
+        if (e.code !== 'Space') return;
+
+        // Jeżeli jesteśmy w polu input/textarea lub elemencie edytowalnym – nie skaczemy
+        const tag = e.target.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) {
+            return;
         }
+
+        e.preventDefault();
+        if (gameState === 'gameover') return;
+        doJump();
     });
 
-    // dotyk / kliknięcie – cała strona
+    // Sterowanie – dotyk / kliknięcie dla gry
     function handleTap(e) {
         if (gameState === 'gameover') return;
         doJump();
     }
 
-    window.addEventListener('mousedown', handleTap);
+    // Kliknięcia myszą – nie reagujemy, gdy klik w okno game over
+    window.addEventListener('mousedown', (e) => {
+        if (e.target.closest('#game-over-box')) return;
+        handleTap(e);
+    });
+
+    // Dotyk – tylko obszar gry, nie okno game over
     window.addEventListener('touchstart', (e) => {
+        const target = e.target;
+
+        // Jeśli dotykamy okno game over (przyciski, input) – pozwalamy na normalne działanie
+        if (target.closest('#game-over-box')) {
+            return;
+        }
+
+        // Jeśli dotyk jest poza wrapperem gry – np. przewijanie strony – ignorujemy
+        if (!target.closest('#game-wrapper')) {
+            return;
+        }
+
+        if (gameState === 'gameover') return;
+
         e.preventDefault();
         handleTap(e);
     }, { passive: false });
 
-    // Game over – obsługa przycisków
-    saveScoreBtn.addEventListener('click', () => {
+    function handleSaveScore() {
+        if (gameOverActionHandled) return;
+        gameOverActionHandled = true;
+
         const name = (playerNameInput.value || '').toUpperCase().substring(0, 5) || '???';
         if (window.hof && typeof window.hof.addScore === 'function') {
             window.hof.addScore(name, score);
             window.hof.render(document.getElementById('hall-of-fame'));
         }
         resetGame();
+    }
+
+    function handleRestart() {
+        if (gameOverActionHandled) return;
+        gameOverActionHandled = true;
+        resetGame();
+    }
+
+    // Game over – obsługa przycisków (klik)
+    saveScoreBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleSaveScore();
     });
 
-    restartBtn.addEventListener('click', () => {
-        resetGame();
+    restartBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleRestart();
     });
+
+    // Game over – obsługa przycisków (tap na telefonie)
+    saveScoreBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        handleSaveScore();
+    }, { passive: false });
+
+    restartBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        handleRestart();
+    }, { passive: false });
 
     // Inicjalizacja – Hall of Fame
     document.addEventListener('DOMContentLoaded', () => {
