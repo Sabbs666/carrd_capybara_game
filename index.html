@@ -82,7 +82,7 @@
 
         canvas {
             display: block;
-            background: #7fd4ff; /* i tak nadpisywane w JS */
+            background: linear-gradient(#7fd4ff, #b5e8ff);
             border-radius: 8px;
             width: 100%;
             height: auto;      /* zachowuje proporcje 800x400 */
@@ -244,17 +244,17 @@
                 <div id="game-over-overlay">
                     <div id="game-over-box">
                         <h3>Koniec gry</h3>
-                            <div class="row">
-                                <strong>Twój wynik:</strong> <span id="final-score">0</span>
-                            </div>
-                            <div class="row">
-                                <label for="player-name">Twoje imię (max 5 znaków):</label>
-                                <input id="player-name" type="text" maxlength="5" />
-                            </div>
-                            <div class="buttons">
-                                <button id="save-score-btn">Zapisz wynik</button>
-                                <button id="restart-btn" class="secondary">Graj ponownie</button>
-                            </div>
+                        <div class="row">
+                            <strong>Twój wynik:</strong> <span id="final-score">0</span>
+                        </div>
+                        <div class="row">
+                            <label for="player-name">Twoje imię (max 10 znaków):</label>
+                            <input id="player-name" type="text" maxlength="10" />
+                        </div>
+                        <div class="buttons">
+                            <button id="save-score-btn">Zapisz wynik</button>
+                            <button id="restart-btn" class="secondary">Graj ponownie</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -306,45 +306,24 @@
     const BASE_SPEED = 4;
 
     // 10 poziomów – co 30 sekund:
-    // lvl 1..10, punkty 10..100
+    // 0-30s:   poziom 1, 10 pkt
+    // 30-60s:  poziom 2, 20 pkt
+    // 60-90s:  poziom 3, 30 pkt
+    // 90-120s: poziom 4, 40 pkt
+    // 120-150: poziom 5, 50 pkt
+    // 150-180: poziom 6, 60 pkt
+    // 180-210: poziom 7, 70 pkt
+    // 210-240: poziom 8, 80 pkt
+    // 240-270: poziom 9, 90 pkt
+    // 270+:    poziom 10, 100 pkt
     const LEVEL_DURATION = 30;          // w sekundach
     const MAX_LEVEL = 10;               // poziomy 1..10
-    const SPEED_LEVELS = [1, 1.15, 1.3, 1.45, 1.6, 1.75, 1.9, 2.05, 2.2, 2.35];
-    const REWARD_LEVELS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-
-    // Kolory nieba i trawy dla kolejnych poziomów (coraz ciemniejsze)
-    const SKY_COLORS = [
-        '#7fd4ff',
-        '#6dc2ff',
-        '#5ab0ff',
-        '#479dff',
-        '#3589f0',
-        '#2f76d0',
-        '#2955b0',
-        '#233f90',
-        '#1c2c70',
-        '#151c50'
-    ];
-    const GRASS_COLORS = [
-        '#3ea63e',
-        '#36963a',
-        '#308636',
-        '#2a7633',
-        '#24662f',
-        '#1e562b',
-        '#184627',
-        '#123623',
-        '#0d261f',
-        '#08161b'
-    ];
+    const SPEED_LEVELS = [1, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8];  // mnożniki prędkości
+    const REWARD_LEVELS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];       // punkty za przeszkodę
 
     // Stałe dla przewijania terenu
     const STRIPE_WIDTH = 40;
     const HILL_SEG = 200;
-
-    // Nieregularne odstępy w czasie między przeszkodami (ms)
-    const BASE_OBSTACLE_DELAY_MIN = 900;
-    const BASE_OBSTACLE_DELAY_MAX = 1800;
 
     const CAPY = {
         x: 80,
@@ -356,8 +335,10 @@
     };
 
     let obstacles = [];
+    let lastObstacleTime = 0;
+    let obstacleInterval = 1400; // ms
 
-    // przesuwający się teren (parallax)
+    // Parallax: osobne offsety dla ziemi i pagórków
     let groundOffset = 0;      // ziemia + kreski (zawsze w zakresie [-STRIPE_WIDTH, 0])
     let hillOffset = 0;        // pagórki w tle (zawsze w zakresie [-HILL_SEG, 0])
 
@@ -373,10 +354,6 @@
     let score = 0;
 
     let gameOverActionHandled = false;
-
-    // sterowanie generowaniem przeszkód (czasowe)
-    let lastObstacleTime = 0;
-    let nextObstacleDelay = 1200; // ms
 
     // Do skalowania interfejsu gry
     let baseGameWidth = null;
@@ -404,6 +381,7 @@
         CAPY.onGround = true;
 
         obstacles = [];
+        lastObstacleTime = 0;
 
         groundOffset = 0;
         hillOffset = 0;
@@ -417,10 +395,6 @@
         score = 0;
         gameState = 'ready';
 
-        // pierwszy spawn po ok. 1.2s od startu
-        lastObstacleTime = 0;
-        nextObstacleDelay = 1200;
-
         scoreEl.textContent = '0';
         timeEl.textContent = '0.0';
         speedIndicatorEl.textContent = '1';
@@ -433,7 +407,12 @@
         drawFrame(0); // statyczny kadr startowy
     }
 
-    function spawnObstacle() {
+    function spawnObstacle(currentTime) {
+        const now = currentTime;
+        if (now - lastObstacleTime < obstacleInterval) return;
+
+        lastObstacleTime = now;
+
         // egzotyczne zwierzęta
         const animalTypes = [
             'słoń', 'małpa', 'krokodyl', 'pantera', 'papuga',
@@ -441,7 +420,7 @@
         ];
         const type = animalTypes[Math.floor(Math.random() * animalTypes.length)];
 
-        // Bazowe rozmiary
+        // Bazowe rozmiary zbliżone do wcześniejszych „domowych” zwierząt
         let baseW = 60;
         let baseH = 40;
 
@@ -470,7 +449,7 @@
 
         // Skalowanie rozmiaru zwierzęcia zależnie od poziomu prędkości:
         const lvlIndex = getCurrentLevelIndex(); // 0..9
-        const sizeFactor = 1 + lvlIndex * 0.15;   // 1.0, 1.15, 1.3, ...
+        const sizeFactor = 1 + lvlIndex * 0.2;   // 1.0, 1.2, 1.4, ... , 2.8
 
         const width = baseW * sizeFactor;
         const height = baseH * sizeFactor;
@@ -486,32 +465,6 @@
             scored: false,
             type
         });
-    }
-
-    function scheduleNextObstacle(speed) {
-        // czas między przeszkodami losowy w [min,max], ale skalowany prędkością,
-        // żeby przy większej prędkości nie były zbyt gęsto w przestrzeni
-        const baseDelay = BASE_OBSTACLE_DELAY_MIN +
-            Math.random() * (BASE_OBSTACLE_DELAY_MAX - BASE_OBSTACLE_DELAY_MIN);
-
-        const speedFactor = speed / BASE_SPEED; // >1 dla wyższych poziomów
-        nextObstacleDelay = baseDelay / speedFactor; // przy wyższej prędkości mniej ms, ale podobna odległość
-    }
-
-    function trySpawnObstacle(timestamp, speed) {
-        if (!CAPY.onGround) return; // generuj tylko, gdy można zareagować skokiem
-
-        if (lastObstacleTime === 0) {
-            // pierwszy spawn liczymy od startu gry
-            lastObstacleTime = startTime || timestamp;
-        }
-
-        const elapsedSinceLast = timestamp - lastObstacleTime;
-        if (elapsedSinceLast >= nextObstacleDelay) {
-            spawnObstacle();
-            lastObstacleTime = timestamp;
-            scheduleNextObstacle(speed);
-        }
     }
 
     function doJump() {
@@ -576,10 +529,9 @@
             CAPY.onGround = true;
         }
 
-        // Próba wygenerowania nowej przeszkody w zależności od czasu
-        trySpawnObstacle(timestamp, speed);
-
         // Przeszkody
+        spawnObstacle(timestamp);
+
         for (let i = obstacles.length - 1; i >= 0; i--) {
             const o = obstacles[i];
             o.x -= speed * dt;
@@ -617,13 +569,6 @@
 
     function drawBackground(time) {
         const groundY = canvas.height - GROUND_HEIGHT;
-        const lvlIndex = getCurrentLevelIndex();
-        const skyColor = SKY_COLORS[lvlIndex] || SKY_COLORS[SKY_COLORS.length - 1];
-        const grassColor = GRASS_COLORS[lvlIndex] || GRASS_COLORS[GRASS_COLORS.length - 1];
-
-        // Niebo
-        ctx.fillStyle = skyColor;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // Słońce – nieruchome
         ctx.save();
@@ -637,7 +582,7 @@
         ctx.save();
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         const cloudBaseY1 = 70;
-        the cloudBaseY2 = 120;
+        const cloudBaseY2 = 120;
         const cloudBaseY3 = 50;
         const cloudSpacing = 220;
 
@@ -660,8 +605,8 @@
         ctx.fillStyle = '#5b3b1f';
         ctx.fillRect(0, groundY, canvas.width, GROUND_HEIGHT);
 
-        // Trawa (kolor zależny od poziomu)
-        ctx.fillStyle = grassColor;
+        // Trawa
+        ctx.fillStyle = '#3ea63e';
         ctx.fillRect(0, groundY, canvas.width, 8);
 
         // Linie na ziemi (scrollujące razem z terenem)
@@ -1090,6 +1035,13 @@
 
     // Sterowanie – klawiatura (spacja)
     window.addEventListener('keydown', (e) => {
+        // Enter po game over – szybki zapis i restart
+        if (e.code === 'Enter' && gameState === 'gameover') {
+            e.preventDefault();
+            handleSaveScore();
+            return;
+        }
+
         if (e.code !== 'Space') return;
 
         const tag = e.target.tagName.toLowerCase();
@@ -1137,7 +1089,7 @@
         if (gameOverActionHandled) return;
         gameOverActionHandled = true;
 
-        const name = (playerNameInput.value || '').toUpperCase().substring(0, 5) || '???';
+        const name = (playerNameInput.value || '').toUpperCase().substring(0, 10) || '???';
         if (window.hof && typeof window.hof.addScore === 'function') {
             window.hof.addScore(name, score);
             window.hof.render(hofContainer);
