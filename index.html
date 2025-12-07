@@ -244,17 +244,17 @@
                 <div id="game-over-overlay">
                     <div id="game-over-box">
                         <h3>Koniec gry</h3>
-                        <div class="row">
-                            <strong>Twój wynik:</strong> <span id="final-score">0</span>
-                        </div>
-                        <div class="row">
-                            <label for="player-name">Twoje imię (max 5 znaków):</label>
-                            <input id="player-name" type="text" maxlength="5" />
-                        </div>
-                        <div class="buttons">
-                            <button id="save-score-btn">Zapisz wynik</button>
-                            <button id="restart-btn" class="secondary">Graj ponownie</button>
-                        </div>
+                            <div class="row">
+                                <strong>Twój wynik:</strong> <span id="final-score">0</span>
+                            </div>
+                            <div class="row">
+                                <label for="player-name">Twoje imię (max 5 znaków):</label>
+                                <input id="player-name" type="text" maxlength="5" />
+                            </div>
+                            <div class="buttons">
+                                <button id="save-score-btn">Zapisz wynik</button>
+                                <button id="restart-btn" class="secondary">Graj ponownie</button>
+                            </div>
                     </div>
                 </div>
             </div>
@@ -342,9 +342,9 @@
     const STRIPE_WIDTH = 40;
     const HILL_SEG = 200;
 
-    // Parametry odstępów między przeszkodami (w przestrzeni gry, nie w czasie)
-    const MIN_OBSTACLE_DISTANCE = 220;   // minimalny dystans w poziomie między kolejnymi zwierzętami
-    const RANDOM_OBSTACLE_DISTANCE = 200; // dodatkowy losowy dystans [0..200]
+    // Nieregularne odstępy w czasie między przeszkodami (ms)
+    const BASE_OBSTACLE_DELAY_MIN = 900;
+    const BASE_OBSTACLE_DELAY_MAX = 1800;
 
     const CAPY = {
         x: 80,
@@ -356,9 +356,8 @@
     };
 
     let obstacles = [];
-    let distanceSinceLastObstacle = 0;
 
-    // Parallax: osobne offsety dla ziemi i pagórków
+    // przesuwający się teren (parallax)
     let groundOffset = 0;      // ziemia + kreski (zawsze w zakresie [-STRIPE_WIDTH, 0])
     let hillOffset = 0;        // pagórki w tle (zawsze w zakresie [-HILL_SEG, 0])
 
@@ -374,6 +373,10 @@
     let score = 0;
 
     let gameOverActionHandled = false;
+
+    // sterowanie generowaniem przeszkód (czasowe)
+    let lastObstacleTime = 0;
+    let nextObstacleDelay = 1200; // ms
 
     // Do skalowania interfejsu gry
     let baseGameWidth = null;
@@ -401,7 +404,6 @@
         CAPY.onGround = true;
 
         obstacles = [];
-        distanceSinceLastObstacle = 0;
 
         groundOffset = 0;
         hillOffset = 0;
@@ -414,6 +416,10 @@
         elapsedTime = 0;
         score = 0;
         gameState = 'ready';
+
+        // pierwszy spawn po ok. 1.2s od startu
+        lastObstacleTime = 0;
+        nextObstacleDelay = 1200;
 
         scoreEl.textContent = '0';
         timeEl.textContent = '0.0';
@@ -435,7 +441,7 @@
         ];
         const type = animalTypes[Math.floor(Math.random() * animalTypes.length)];
 
-        // Bazowe rozmiary zbliżone do wcześniejszych „domowych” zwierząt
+        // Bazowe rozmiary
         let baseW = 60;
         let baseH = 40;
 
@@ -482,27 +488,29 @@
         });
     }
 
-    function maybeSpawnObstacle(speed) {
-        // Zliczamy dystans przebytej ziemi (aby odstępy były w jednostkach przestrzeni)
-        // speed*dt jest "pikselami na klatkę przy 60FPS", więc distanceSinceLastObstacle
-        // też liczymy w pikselach poziomo.
-        // Warunki:
-        // - min. dystans + losowy margines,
-        // - kapibara na ziemi,
-        // - ostatnie zwierzę nie za blisko prawej krawędzi.
-        if (!CAPY.onGround) return;
+    function scheduleNextObstacle(speed) {
+        // czas między przeszkodami losowy w [min,max], ale skalowany prędkością,
+        // żeby przy większej prędkości nie były zbyt gęsto w przestrzeni
+        const baseDelay = BASE_OBSTACLE_DELAY_MIN +
+            Math.random() * (BASE_OBSTACLE_DELAY_MAX - BASE_OBSTACLE_DELAY_MIN);
 
-        const last = obstacles[obstacles.length - 1];
-        if (last && last.x > canvas.width - 120) {
-            return; // poprzednie za blisko prawej krawędzi
+        const speedFactor = speed / BASE_SPEED; // >1 dla wyższych poziomów
+        nextObstacleDelay = baseDelay / speedFactor; // przy wyższej prędkości mniej ms, ale podobna odległość
+    }
+
+    function trySpawnObstacle(timestamp, speed) {
+        if (!CAPY.onGround) return; // generuj tylko, gdy można zareagować skokiem
+
+        if (lastObstacleTime === 0) {
+            // pierwszy spawn liczymy od startu gry
+            lastObstacleTime = startTime || timestamp;
         }
 
-        if (distanceSinceLastObstacle < MIN_OBSTACLE_DISTANCE) return;
-
-        const extra = Math.random() * RANDOM_OBSTACLE_DISTANCE;
-        if (distanceSinceLastObstacle >= MIN_OBSTACLE_DISTANCE + extra) {
+        const elapsedSinceLast = timestamp - lastObstacleTime;
+        if (elapsedSinceLast >= nextObstacleDelay) {
             spawnObstacle();
-            distanceSinceLastObstacle = 0;
+            lastObstacleTime = timestamp;
+            scheduleNextObstacle(speed);
         }
     }
 
@@ -568,11 +576,8 @@
             CAPY.onGround = true;
         }
 
-        // Dystans od ostatniej przeszkody (w pikselach gry)
-        distanceSinceLastObstacle += speed * dt * 16.67; // skalowanie do "px na 60FPS"
-
-        // Próba wygenerowania nowej przeszkody
-        maybeSpawnObstacle(speed);
+        // Próba wygenerowania nowej przeszkody w zależności od czasu
+        trySpawnObstacle(timestamp, speed);
 
         // Przeszkody
         for (let i = obstacles.length - 1; i >= 0; i--) {
@@ -632,7 +637,7 @@
         ctx.save();
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         const cloudBaseY1 = 70;
-        const cloudBaseY2 = 120;
+        the cloudBaseY2 = 120;
         const cloudBaseY3 = 50;
         const cloudSpacing = 220;
 
