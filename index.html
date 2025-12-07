@@ -82,7 +82,7 @@
 
         canvas {
             display: block;
-            background: linear-gradient(#7fd4ff, #b5e8ff);
+            background: #7fd4ff; /* i tak nadpisywane w JS */
             border-radius: 8px;
             width: 100%;
             height: auto;      /* zachowuje proporcje 800x400 */
@@ -118,37 +118,21 @@
             text-align: center;
         }
 
-        #hall-of-fame table,
-        #ultimate-hof table {
+        #hall-of-fame table {
             width: 100%;
             border-collapse: collapse;
             font-size: 13px;
         }
 
         #hall-of-fame th,
-        #hall-of-fame td,
-        #ultimate-hof th,
-        #ultimate-hof td {
+        #hall-of-fame td {
             border-bottom: 1px solid #333;
             padding: 4px 3px;
             text-align: left;
         }
 
-        #hall-of-fame th,
-        #ultimate-hof th {
+        #hall-of-fame th {
             font-weight: 600;
-        }
-
-        #ultimate-hof-panel {
-            margin-top: 10px;
-            border-top: 1px solid #333;
-            padding-top: 8px;
-        }
-
-        #ultimate-hof-panel h3 {
-            margin: 6px 0;
-            font-size: 16px;
-            text-align: center;
         }
 
         #game-over-overlay {
@@ -277,7 +261,7 @@
             <div id="ui">
                 <div>Punkty: <span id="score">0</span></div>
                 <div>Czas: <span id="time">0.0</span>s</div>
-                <div>Poziom prędkości: <span id="speed-indicator">1</span>/5</div>
+                <div>Poziom prędkości: <span id="speed-indicator">1</span>/10</div>
             </div>
             <div id="message">
                 Sterowanie: <strong>Spacja</strong> lub <strong>dotknięcie / kliknięcie w obszar gry</strong><br />
@@ -289,11 +273,6 @@
     <div id="hof-panel">
         <h2>Hall of Fame</h2>
         <div id="hall-of-fame">Ładowanie...</div>
-
-        <div id="ultimate-hof-panel">
-            <h3>Ultimate Hall of Fame (globalne)</h3>
-            <div id="ultimate-hof">Ładowanie...</div>
-        </div>
     </div>
 </div>
 
@@ -319,7 +298,6 @@
     const gameWrapperEl = document.getElementById('game-wrapper');
 
     const hofContainer = document.getElementById('hall-of-fame');
-    const ultimateHofContainer = document.getElementById('ultimate-hof');
 
     const GRAVITY = 0.5;
     const JUMP_SPEED = -11;
@@ -327,23 +305,46 @@
 
     const BASE_SPEED = 4;
 
-    // 5 poziomów – co 30 sekund:
-    // 0-30s: poziom 1, 10 pkt
-    // 30-60: poziom 2, 20 pkt
-    // 60-90: poziom 3, 30 pkt
-    // 90-120: poziom 4, 40 pkt
-    // 120+: poziom 5, 50 pkt
+    // 10 poziomów – co 30 sekund:
+    // lvl 1..10, punkty 10..100
     const LEVEL_DURATION = 30;          // w sekundach
-    const MAX_LEVEL = 5;               // poziomy 1..5
-    const SPEED_LEVELS = [1, 1.2, 1.4, 1.6, 1.8];  // mnożniki prędkości
-    const REWARD_LEVELS = [10, 20, 30, 40, 50];    // punkty za przeszkodę
+    const MAX_LEVEL = 10;               // poziomy 1..10
+    const SPEED_LEVELS = [1, 1.15, 1.3, 1.45, 1.6, 1.75, 1.9, 2.05, 2.2, 2.35];
+    const REWARD_LEVELS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
-    // Minimalny wynik, aby trafić do Ultimate Hall of Fame
-    const MIN_ULTIMATE_SCORE = 500;
+    // Kolory nieba i trawy dla kolejnych poziomów (coraz ciemniejsze)
+    const SKY_COLORS = [
+        '#7fd4ff',
+        '#6dc2ff',
+        '#5ab0ff',
+        '#479dff',
+        '#3589f0',
+        '#2f76d0',
+        '#2955b0',
+        '#233f90',
+        '#1c2c70',
+        '#151c50'
+    ];
+    const GRASS_COLORS = [
+        '#3ea63e',
+        '#36963a',
+        '#308636',
+        '#2a7633',
+        '#24662f',
+        '#1e562b',
+        '#184627',
+        '#123623',
+        '#0d261f',
+        '#08161b'
+    ];
 
     // Stałe dla przewijania terenu
     const STRIPE_WIDTH = 40;
     const HILL_SEG = 200;
+
+    // Parametry odstępów między przeszkodami (w przestrzeni gry, nie w czasie)
+    const MIN_OBSTACLE_DISTANCE = 220;   // minimalny dystans w poziomie między kolejnymi zwierzętami
+    const RANDOM_OBSTACLE_DISTANCE = 200; // dodatkowy losowy dystans [0..200]
 
     const CAPY = {
         x: 80,
@@ -355,8 +356,7 @@
     };
 
     let obstacles = [];
-    let lastObstacleTime = 0;
-    let obstacleInterval = 1400; // ms
+    let distanceSinceLastObstacle = 0;
 
     // Parallax: osobne offsety dla ziemi i pagórków
     let groundOffset = 0;      // ziemia + kreski (zawsze w zakresie [-STRIPE_WIDTH, 0])
@@ -382,7 +382,7 @@
     function getCurrentLevelIndex() {
         if (!startTime) return 0;
         const levelFromTime = Math.floor(elapsedTime / LEVEL_DURATION);
-        return Math.min(levelFromTime, MAX_LEVEL - 1); // indeks 0..4
+        return Math.min(levelFromTime, MAX_LEVEL - 1); // indeks 0..9
     }
 
     function getCurrentSpeed() {
@@ -401,7 +401,7 @@
         CAPY.onGround = true;
 
         obstacles = [];
-        lastObstacleTime = 0;
+        distanceSinceLastObstacle = 0;
 
         groundOffset = 0;
         hillOffset = 0;
@@ -427,12 +427,7 @@
         drawFrame(0); // statyczny kadr startowy
     }
 
-    function spawnObstacle(currentTime) {
-        const now = currentTime;
-        if (now - lastObstacleTime < obstacleInterval) return;
-
-        lastObstacleTime = now;
-
+    function spawnObstacle() {
         // egzotyczne zwierzęta
         const animalTypes = [
             'słoń', 'małpa', 'krokodyl', 'pantera', 'papuga',
@@ -468,8 +463,8 @@
         }
 
         // Skalowanie rozmiaru zwierzęcia zależnie od poziomu prędkości:
-        const lvlIndex = getCurrentLevelIndex(); // 0..4
-        const sizeFactor = 1 + lvlIndex * 0.2;   // 1.0, 1.2, 1.4, 1.6, 1.8
+        const lvlIndex = getCurrentLevelIndex(); // 0..9
+        const sizeFactor = 1 + lvlIndex * 0.15;   // 1.0, 1.15, 1.3, ...
 
         const width = baseW * sizeFactor;
         const height = baseH * sizeFactor;
@@ -485,6 +480,30 @@
             scored: false,
             type
         });
+    }
+
+    function maybeSpawnObstacle(speed) {
+        // Zliczamy dystans przebytej ziemi (aby odstępy były w jednostkach przestrzeni)
+        // speed*dt jest "pikselami na klatkę przy 60FPS", więc distanceSinceLastObstacle
+        // też liczymy w pikselach poziomo.
+        // Warunki:
+        // - min. dystans + losowy margines,
+        // - kapibara na ziemi,
+        // - ostatnie zwierzę nie za blisko prawej krawędzi.
+        if (!CAPY.onGround) return;
+
+        const last = obstacles[obstacles.length - 1];
+        if (last && last.x > canvas.width - 120) {
+            return; // poprzednie za blisko prawej krawędzi
+        }
+
+        if (distanceSinceLastObstacle < MIN_OBSTACLE_DISTANCE) return;
+
+        const extra = Math.random() * RANDOM_OBSTACLE_DISTANCE;
+        if (distanceSinceLastObstacle >= MIN_OBSTACLE_DISTANCE + extra) {
+            spawnObstacle();
+            distanceSinceLastObstacle = 0;
+        }
     }
 
     function doJump() {
@@ -549,9 +568,13 @@
             CAPY.onGround = true;
         }
 
-        // Przeszkody
-        spawnObstacle(timestamp);
+        // Dystans od ostatniej przeszkody (w pikselach gry)
+        distanceSinceLastObstacle += speed * dt * 16.67; // skalowanie do "px na 60FPS"
 
+        // Próba wygenerowania nowej przeszkody
+        maybeSpawnObstacle(speed);
+
+        // Przeszkody
         for (let i = obstacles.length - 1; i >= 0; i--) {
             const o = obstacles[i];
             o.x -= speed * dt;
@@ -589,6 +612,13 @@
 
     function drawBackground(time) {
         const groundY = canvas.height - GROUND_HEIGHT;
+        const lvlIndex = getCurrentLevelIndex();
+        const skyColor = SKY_COLORS[lvlIndex] || SKY_COLORS[SKY_COLORS.length - 1];
+        const grassColor = GRASS_COLORS[lvlIndex] || GRASS_COLORS[GRASS_COLORS.length - 1];
+
+        // Niebo
+        ctx.fillStyle = skyColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // Słońce – nieruchome
         ctx.save();
@@ -625,8 +655,8 @@
         ctx.fillStyle = '#5b3b1f';
         ctx.fillRect(0, groundY, canvas.width, GROUND_HEIGHT);
 
-        // Trawa
-        ctx.fillStyle = '#3ea63e';
+        // Trawa (kolor zależny od poziomu)
+        ctx.fillStyle = grassColor;
         ctx.fillRect(0, groundY, canvas.width, 8);
 
         // Linie na ziemi (scrollujące razem z terenem)
@@ -1108,9 +1138,6 @@
             window.hof.render(hofContainer);
         }
 
-        // Po zaktualizowaniu lokalnego Hall of Fame spróbuj zaktualizować Ultimate Hall of Fame
-        pushTopLocalToUltimateIfEligible();
-
         resetGame();
     }
 
@@ -1190,94 +1217,10 @@
         }
     }
 
-    /* ---------------- Ultimate Hall of Fame (globalny) ---------------- */
-
-    // Renderowanie tabeli Ultimate HoF z danych [{name, score}, ...]
-    function renderUltimateHof(list) {
-        if (!list || !list.length) {
-            ultimateHofContainer.innerHTML = '<em>Brak wyników globalnych.</em>';
-            return;
-        }
-
-        let html = '<table><thead><tr><th>#</th><th>Gracz</th><th>Wynik</th></tr></thead><tbody>';
-        list.forEach((entry, index) => {
-            const name = (entry.name || '???').toString().substring(0, 5);
-            const score = Number(entry.score) || 0;
-            html += `<tr><td>${index + 1}</td><td>${name}</td><td>${score}</td></tr>`;
-        });
-        html += '</tbody></table>';
-        ultimateHofContainer.innerHTML = html;
-    }
-
-    // Pobieranie Ultimate HoF z serwera
-    function loadUltimateHallOfFame() {
-        // Zakładamy prosty endpoint na serwerze, który zwraca JSON:
-        // [{ "name": "AAA", "score": 1234 }, ...]
-        fetch('ultimate_hof.php?action=get', { cache: 'no-store' })
-            .then(resp => resp.ok ? resp.json() : [])
-            .then(data => {
-                renderUltimateHof(Array.isArray(data) ? data : []);
-            })
-            .catch(() => {
-                ultimateHofContainer.innerHTML = '<em>Nie udało się pobrać Ultimate Hall of Fame.</em>';
-            });
-    }
-
-    // Odczyt najwyższego wyniku z lokalnego Hall of Fame (parsując tabelę)
-    function getTopLocalScoreFromDom() {
-        const table = hofContainer.querySelector('table');
-        if (!table) return null;
-
-        const firstRow = table.querySelector('tbody tr');
-        if (!firstRow) return null;
-
-        const cells = firstRow.querySelectorAll('td');
-        if (cells.length < 3) return null;
-
-        // Zakładamy strukturę: # | nazwa | wynik
-        const name = cells[1].textContent.trim().substring(0, 5);
-        const score = parseInt(cells[2].textContent.trim(), 10) || 0;
-
-        return { name, score };
-    }
-
-    // Wysyłanie top lokalnego wyniku do Ultimate HoF, jeśli spełnia warunek
-    function pushTopLocalToUltimateIfEligible() {
-        const top = getTopLocalScoreFromDom();
-        if (!top) return;
-        if (top.score < MIN_ULTIMATE_SCORE) return;
-
-        // Prosty POST JSON do serwera, który zapisuje do pliku / bazy
-        // i zwraca zaktualizowaną listę Ultimate HoF.
-        fetch('ultimate_hof.php?action=add', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(top)
-        })
-        .then(resp => resp.ok ? resp.json() : [])
-        .then(data => {
-            // Serwer może zwrócić nową listę globalną
-            if (Array.isArray(data) && data.length) {
-                renderUltimateHof(data);
-            } else {
-                // jeśli nie, po prostu dociągamy
-                loadUltimateHallOfFame();
-            }
-        })
-        .catch(() => {
-            // w razie błędu po prostu nic nie robimy – gra działa dalej
-        });
-    }
-
     // Inicjalizacja – Hall of Fame lokalny
     if (window.hof && typeof window.hof.render === 'function') {
         window.hof.render(hofContainer);
     }
-
-    // Inicjalizacja – Ultimate Hall of Fame globalny
-    loadUltimateHallOfFame();
 
     // Start – statyczny ekran
     resetGame();
