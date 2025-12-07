@@ -341,6 +341,10 @@
     // Minimalny wynik, aby trafić do Ultimate Hall of Fame
     const MIN_ULTIMATE_SCORE = 500;
 
+    // Stałe dla przewijania terenu
+    const STRIPE_WIDTH = 40;
+    const HILL_SEG = 200;
+
     const CAPY = {
         x: 80,
         y: 0, // ustawi się niżej
@@ -355,8 +359,8 @@
     let obstacleInterval = 1400; // ms
 
     // Parallax: osobne offsety dla ziemi i pagórków
-    let groundOffset = 0;      // ziemia + kreski
-    let hillOffset = 0;        // pagórki w tle
+    let groundOffset = 0;      // ziemia + kreski (zawsze w zakresie [-STRIPE_WIDTH, 0])
+    let hillOffset = 0;        // pagórki w tle (zawsze w zakresie [-HILL_SEG, 0])
 
     // Chmury – osobne offsety (niezależne od prędkości gry)
     let cloudOffset1 = 0;
@@ -519,9 +523,15 @@
 
         // Teren – ziemia (kreski) porusza się z prędkością gry
         groundOffset -= speed * dt;
+        while (groundOffset <= -STRIPE_WIDTH) {
+            groundOffset += STRIPE_WIDTH;
+        }
 
         // Pagórki w tle – wolniej (parallax)
         hillOffset -= speed * 0.4 * dt;
+        while (hillOffset <= -HILL_SEG) {
+            hillOffset += HILL_SEG;
+        }
 
         // Chmury – powoli, niezależnie od prędkości gry
         cloudOffset1 -= 0.3 * dt;
@@ -621,18 +631,14 @@
 
         // Linie na ziemi (scrollujące razem z terenem)
         ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        const stripeWidth = 40;
-        const stripeShift = ((groundOffset % stripeWidth) + stripeWidth) % stripeWidth;
-        for (let x = -stripeShift; x < canvas.width + stripeWidth; x += stripeWidth) {
+        for (let x = groundOffset; x < canvas.width + STRIPE_WIDTH; x += STRIPE_WIDTH) {
             ctx.fillRect(x, groundY + 12, 20, 3);
         }
 
         // Pagórki w tle – wolniej (parallax)
         ctx.fillStyle = 'rgba(0, 100, 0, 0.5)';
         const hillY = groundY - 60;
-        const hillSeg = 200;
-        const hillShift = ((hillOffset % hillSeg) + hillSeg) % hillSeg;
-        for (let x = -hillShift - hillSeg; x < canvas.width + hillSeg; x += hillSeg) {
+        for (let x = hillOffset - HILL_SEG; x < canvas.width + HILL_SEG; x += HILL_SEG) {
             ctx.beginPath();
             ctx.moveTo(x, groundY);
             ctx.quadraticCurveTo(x + 100, hillY - 30, x + 200, groundY);
